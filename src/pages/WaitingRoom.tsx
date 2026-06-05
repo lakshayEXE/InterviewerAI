@@ -1,0 +1,150 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { Mic, User } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { PageTransition } from '../components/ui/PageTransition';
+import { Card } from '../components/ui/Card';
+import { Button } from '../components/ui/Button';
+import { motion } from 'framer-motion';
+
+export const WaitingRoom: React.FC = () => {
+  const { sessionData } = useParams<{ sessionData: string }>();
+  const navigate = useNavigate();
+  const [candidateName, setCandidateName] = useState('');
+  const [micVolume, setMicVolume] = useState(0);
+  const [hasMicPermission, setHasMicPermission] = useState(false);
+  
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  useEffect(() => {
+    let animationFrame: number;
+
+    const initMic = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        streamRef.current = stream;
+        setHasMicPermission(true);
+
+        const ctx = new window.AudioContext();
+        audioContextRef.current = ctx;
+        const source = ctx.createMediaStreamSource(stream);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 256;
+        source.connect(analyser);
+        analyserRef.current = analyser;
+
+        const updateVolume = () => {
+          if (analyserRef.current) {
+            const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
+            analyserRef.current.getByteFrequencyData(dataArray);
+            const sum = dataArray.reduce((a, b) => a + b, 0);
+            setMicVolume(sum / dataArray.length);
+          }
+          animationFrame = requestAnimationFrame(updateVolume);
+        };
+        updateVolume();
+
+      } catch (err) {
+        toast.error("Microphone permission denied. Please allow it to proceed.");
+        console.error(err);
+      }
+    };
+
+    initMic();
+
+    return () => {
+      cancelAnimationFrame(animationFrame);
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(t => t.stop());
+      }
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+      }
+    };
+  }, []);
+
+  const handleStart = () => {
+    if (!candidateName.trim()) {
+      toast.error('Please enter your name');
+      return;
+    }
+    if (!hasMicPermission) {
+      toast.error('Microphone permission required');
+      return;
+    }
+    navigate(`/session/${sessionData}`, { state: { candidateName } });
+  };
+
+  return (
+    <PageTransition className="flex items-center justify-center bg-background relative overflow-hidden">
+      {/* Decorative breathing background */}
+      <motion.div 
+        animate={{ scale: [1, 1.1, 1], opacity: [0.3, 0.5, 0.3] }}
+        transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
+        className="absolute w-[800px] h-[800px] bg-primary/10 blur-[150px] rounded-full top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none" 
+      />
+      
+      <Card hoverEffect className="z-10 w-full max-w-md !p-10 flex flex-col gap-10">
+        <div className="text-center">
+          <motion.div 
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            transition={{ type: "spring", damping: 15 }}
+            className="w-16 h-16 bg-primary/20 rounded-full flex items-center justify-center mx-auto mb-6 text-primary border border-primary/30"
+          >
+            <Mic size={32} />
+          </motion.div>
+          <h1 className="text-3xl font-extrabold text-white mb-2">Join Interview</h1>
+          <p className="text-textMuted text-sm">Please verify your hardware and enter your name before joining the session.</p>
+        </div>
+
+        <div className="space-y-6">
+          <div className="bg-background p-5 rounded-2xl border border-gray-800 shadow-inner">
+            <div className="flex justify-between items-center mb-4">
+              <span className="text-sm font-semibold text-textMain flex items-center gap-2">
+                Microphone
+              </span>
+              <span className={`text-xs font-bold px-2 py-1 rounded-md ${hasMicPermission ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
+                {hasMicPermission ? 'Connected' : 'Waiting...'}
+              </span>
+            </div>
+            
+            <div className="h-3 bg-surfaceHighlight rounded-full overflow-hidden relative shadow-inner">
+              <motion.div 
+                className="absolute left-0 top-0 h-full bg-gradient-to-r from-primaryDim to-primary"
+                animate={{ width: `${Math.min(100, micVolume * 2)}%` }}
+                transition={{ type: "tween", duration: 0.1 }}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-textMuted mb-2 pl-1">Your Full Name</label>
+            <div className="relative">
+              <User className="absolute left-4 top-1/2 -translate-y-1/2 text-textMuted" size={20} />
+              <input
+                type="text"
+                value={candidateName}
+                onChange={(e) => setCandidateName(e.target.value)}
+                placeholder="e.g. John Doe"
+                className="w-full bg-background border border-gray-700 text-white font-medium rounded-xl py-4 pl-12 pr-4 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all shadow-inner"
+              />
+            </div>
+          </div>
+        </div>
+
+        <Button
+          variant="primary"
+          size="lg"
+          onClick={handleStart}
+          disabled={!hasMicPermission || !candidateName.trim()}
+          className="w-full shadow-primary/30"
+        >
+          Enter Waiting Room
+        </Button>
+      </Card>
+    </PageTransition>
+  );
+};
