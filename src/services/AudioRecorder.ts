@@ -32,7 +32,7 @@ export class AudioRecorder {
       this.processor.onaudioprocess = (e) => {
         const inputData = e.inputBuffer.getChannelData(0);
         const pcm16Data = this.float32ToInt16(inputData);
-        const base64Data = this.arrayBufferToBase64(pcm16Data.buffer);
+        const base64Data = this.arrayBufferToBase64(pcm16Data.buffer as ArrayBuffer);
         this.onDataCallback(base64Data);
       };
     } catch (error) {

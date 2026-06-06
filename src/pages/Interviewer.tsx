@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
-import { PhoneCall, PhoneOff, LogOut, Loader2, User } from 'lucide-react';
+import { PhoneCall, LogOut, Loader2, User } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { TranscriptSidebar } from '../components/TranscriptSidebar';
 import { Visualizer } from '../components/Visualizer';

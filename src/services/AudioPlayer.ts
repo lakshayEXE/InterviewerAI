@@ -24,7 +24,7 @@ export class AudioPlayer {
     const float32Data = this.int16ToFloat32(pcm16Data);
     
     const buffer = this.audioContext.createBuffer(1, float32Data.length, 24000);
-    buffer.copyToChannel(float32Data, 0);
+    buffer.copyToChannel(float32Data as any, 0);
 
     const source = this.audioContext.createBufferSource();
     source.buffer = buffer;

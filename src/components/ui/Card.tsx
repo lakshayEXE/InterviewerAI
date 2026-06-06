@@ -5,6 +5,7 @@ import { cn } from '../../lib/utils';
 
 interface CardProps extends HTMLMotionProps<"div"> {
   hoverEffect?: boolean;
+  children?: React.ReactNode;
 }
 
 export const Card = React.forwardRef<HTMLDivElement, CardProps>(
