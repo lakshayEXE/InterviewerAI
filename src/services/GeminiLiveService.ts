@@ -134,6 +134,25 @@ export class GeminiLiveService {
     }
   }
 
+  sendCodeContext(code: string) {
+    if (!this.isSetupComplete) return;
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      const msg = {
+        clientContent: {
+          turns: [
+            {
+              role: "user",
+              parts: [{ text: `Candidate's current code editor context:\n\`\`\`javascript\n${code}\n\`\`\`` }]
+            }
+          ],
+          turnComplete: false
+        }
+      };
+      this.ws.send(JSON.stringify(msg));
+    }
+  }
+
+
   disconnect() {
     this.isSetupComplete = false;
     if (this.ws) {

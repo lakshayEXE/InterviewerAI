@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
-import { PhoneCall, LogOut, Loader2, User } from 'lucide-react';
+import { PhoneCall, LogOut, Loader2, User, Code2, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { TranscriptSidebar } from '../components/TranscriptSidebar';
 import { Visualizer } from '../components/Visualizer';
+import { CodeEditor } from '../components/CodeEditor';
 import { AudioRecorder } from '../services/AudioRecorder';
 import { AudioPlayer } from '../services/AudioPlayer';
 import { GeminiLiveService } from '../services/GeminiLiveService';
@@ -32,6 +33,9 @@ export const Interviewer: React.FC = () => {
   const [micVolume, setMicVolume] = useState(0);
   const [aiVolume, setAiVolume] = useState(0);
 
+  const [showCodeEditor, setShowCodeEditor] = useState(false);
+  const [strikes, setStrikes] = useState<string[]>([]);
+
   const audioRecorderRef = useRef<AudioRecorder | null>(null);
   const audioPlayerRef = useRef<AudioPlayer | null>(null);
   const geminiServiceRef = useRef<GeminiLiveService | null>(null);
@@ -44,6 +48,33 @@ export const Interviewer: React.FC = () => {
       console.error("Invalid session data in URL");
     }
   }
+
+  // Anti-Cheat Mechanics
+  useEffect(() => {
+    if (!isRecording) return;
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        setStrikes(prev => [...prev, `Tab switched away at ${new Date().toLocaleTimeString()}`]);
+        toast.error("Anti-Cheat: Tab Switching Detected!");
+      }
+    };
+
+    const handleFullscreenChange = () => {
+      if (!document.fullscreenElement) {
+        setStrikes(prev => [...prev, `Exited fullscreen at ${new Date().toLocaleTimeString()}`]);
+        toast.error("Anti-Cheat: Fullscreen Exited!");
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+    };
+  }, [isRecording]);
 
   useEffect(() => {
     if (apiKey) {
@@ -71,11 +102,9 @@ export const Interviewer: React.FC = () => {
     }
     
     return () => {
-      if (isRecording) {
-        audioRecorderRef.current?.stop();
-        audioPlayerRef.current?.stop();
-        geminiServiceRef.current?.disconnect();
-      }
+      audioRecorderRef.current?.stop();
+      audioPlayerRef.current?.stop();
+      geminiServiceRef.current?.disconnect();
     };
   }, [apiKey]);
 
@@ -104,6 +133,12 @@ export const Interviewer: React.FC = () => {
     }
     try {
       if (!geminiServiceRef.current) return;
+
+      try {
+        await document.documentElement.requestFullscreen();
+      } catch (e) {
+        console.warn("Fullscreen request failed", e);
+      }
       
       audioPlayerRef.current?.init();
       clearTranscript();
@@ -133,6 +168,9 @@ export const Interviewer: React.FC = () => {
       setIsRecording(false);
       toast('Call ended', { icon: '📞' });
     }
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(console.warn);
+    }
     navigate('/evaluation');
   };
 
@@ -161,21 +199,62 @@ export const Interviewer: React.FC = () => {
               </div>
             </div>
           </div>
-          <Button variant="danger" size="sm" onClick={endCall}>
-            <LogOut size={16} />
-            <span className="hidden sm:inline">End Session</span>
-          </Button>
+          <div className="flex gap-3">
+            <Button variant="secondary" size="sm" onClick={() => setShowCodeEditor(!showCodeEditor)}>
+              <Code2 size={16} />
+              <span className="hidden sm:inline">{showCodeEditor ? 'Hide IDE' : 'Show IDE'}</span>
+            </Button>
+            <Button variant="danger" size="sm" onClick={endCall}>
+              <LogOut size={16} />
+              <span className="hidden sm:inline">End Session</span>
+            </Button>
+          </div>
         </Card>
 
-        <div className="flex-1 relative flex items-center justify-center bg-surfaceHighlight/30 rounded-3xl border border-gray-800/50 overflow-hidden">
-           <Visualizer micVolume={micVolume} aiVolume={aiVolume} />
-           
-           {!isConnected && isRecording && (
-             <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/80 backdrop-blur-sm z-20">
-               <Loader2 className="w-10 h-10 text-primary animate-spin mb-4" />
-               <p className="text-white font-medium">Connecting to Gemini...</p>
-             </div>
-           )}
+        {strikes.length > 0 && (
+          <div className="absolute top-24 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 pointer-events-none">
+            {strikes.map((strike, i) => (
+              <motion.div 
+                key={i} 
+                initial={{ opacity: 0, y: -20, scale: 0.9 }} 
+                animate={{ opacity: 1, y: 0, scale: 1 }} 
+                className="bg-red-500/90 text-white px-5 py-3 rounded-xl font-bold shadow-[0_0_30px_rgba(239,68,68,0.4)] flex items-center gap-3 backdrop-blur-md border border-red-400"
+              >
+                <AlertTriangle size={20} className="animate-pulse" />
+                {strike}
+              </motion.div>
+            ))}
+          </div>
+        )}
+
+        <div className="flex-1 relative flex gap-6 overflow-hidden">
+          <motion.div 
+            layout
+            className="flex-1 relative flex items-center justify-center bg-surfaceHighlight/30 rounded-3xl border border-gray-800/50 overflow-hidden"
+          >
+             <Visualizer micVolume={micVolume} aiVolume={aiVolume} />
+             
+             {!isConnected && isRecording && (
+               <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/80 backdrop-blur-sm z-20">
+                 <Loader2 className="w-10 h-10 text-primary animate-spin mb-4" />
+                 <p className="text-white font-medium">Connecting to Gemini...</p>
+               </div>
+             )}
+          </motion.div>
+
+          <AnimatePresence>
+            {showCodeEditor && (
+              <motion.div 
+                initial={{ opacity: 0, x: 20, width: 0 }}
+                animate={{ opacity: 1, x: 0, width: '50%' }}
+                exit={{ opacity: 0, x: 20, width: 0 }}
+                transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                className="h-full rounded-3xl overflow-hidden shadow-2xl origin-right"
+              >
+                <CodeEditor onCodeChange={(code) => geminiServiceRef.current?.sendCodeContext(code)} />
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
         <AnimatePresence>
