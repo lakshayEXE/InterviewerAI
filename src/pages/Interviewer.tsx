@@ -228,9 +228,28 @@ export const Interviewer: React.FC = () => {
         )}
 
         <div className="flex-1 relative flex gap-6 overflow-hidden">
+          <AnimatePresence>
+            {showCodeEditor && (
+              <motion.div 
+                initial={{ opacity: 0, x: 20, width: 0 }}
+                animate={{ opacity: 1, x: 0, width: '100%' }}
+                exit={{ opacity: 0, x: 20, width: 0 }}
+                transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                className="h-full rounded-3xl overflow-hidden shadow-2xl origin-right flex-1"
+              >
+                <CodeEditor onCodeChange={(code, lang) => geminiServiceRef.current?.sendCodeContext(code, lang)} />
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           <motion.div 
             layout
-            className="flex-1 relative flex items-center justify-center bg-surfaceHighlight/30 rounded-3xl border border-gray-800/50 overflow-hidden"
+            className={
+              showCodeEditor 
+                ? "absolute bottom-8 right-8 w-80 h-56 z-50 rounded-3xl border border-white/20 shadow-[0_0_50px_rgba(0,0,0,0.8)] overflow-hidden bg-background/90 backdrop-blur-xl"
+                : "flex-1 relative flex items-center justify-center bg-surfaceHighlight/30 rounded-3xl border border-gray-800/50 overflow-hidden"
+            }
+            transition={{ type: "spring", bounce: 0.1, duration: 0.6 }}
           >
              <Visualizer micVolume={micVolume} aiVolume={aiVolume} />
              
@@ -241,20 +260,6 @@ export const Interviewer: React.FC = () => {
                </div>
              )}
           </motion.div>
-
-          <AnimatePresence>
-            {showCodeEditor && (
-              <motion.div 
-                initial={{ opacity: 0, x: 20, width: 0 }}
-                animate={{ opacity: 1, x: 0, width: '50%' }}
-                exit={{ opacity: 0, x: 20, width: 0 }}
-                transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                className="h-full rounded-3xl overflow-hidden shadow-2xl origin-right"
-              >
-                <CodeEditor onCodeChange={(code, lang) => geminiServiceRef.current?.sendCodeContext(code, lang)} />
-              </motion.div>
-            )}
-          </AnimatePresence>
         </div>
 
         <AnimatePresence>
@@ -277,10 +282,21 @@ export const Interviewer: React.FC = () => {
           )}
         </AnimatePresence>
       </div>
-      
-      <div className="w-80 shrink-0 h-full border-l border-gray-800 bg-background/50 backdrop-blur-md">
-        <TranscriptSidebar transcript={transcript} />
-      </div>
+      <AnimatePresence>
+        {!showCodeEditor && (
+          <motion.div 
+            initial={{ width: 0, opacity: 0 }}
+            animate={{ width: 320, opacity: 1 }}
+            exit={{ width: 0, opacity: 0 }}
+            transition={{ type: "spring", bounce: 0, duration: 0.4 }}
+            className="shrink-0 h-full border-l border-gray-800 bg-background/50 backdrop-blur-md overflow-hidden"
+          >
+            <div className="w-80 h-full">
+              <TranscriptSidebar transcript={transcript} />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </PageTransition>
   );
 };
