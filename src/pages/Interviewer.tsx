@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
-import { PhoneCall, LogOut, Loader2, User, Code2, AlertTriangle } from 'lucide-react';
+import { PhoneCall, LogOut, Loader2, User, Code2, AlertTriangle, Maximize } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { TranscriptSidebar } from '../components/TranscriptSidebar';
 import { Visualizer } from '../components/Visualizer';
@@ -33,24 +33,42 @@ export const Interviewer: React.FC = () => {
   const [micVolume, setMicVolume] = useState(0);
   const [aiVolume, setAiVolume] = useState(0);
 
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [showCodeEditor, setShowCodeEditor] = useState(false);
   const [strikes, setStrikes] = useState<string[]>([]);
 
   const audioRecorderRef = useRef<AudioRecorder | null>(null);
   const audioPlayerRef = useRef<AudioPlayer | null>(null);
   const geminiServiceRef = useRef<GeminiLiveService | null>(null);
-  const speechRecognitionRef = useRef<any>(null);
 
-  let activeNodes: Node[] = storeNodes;
-  if (sessionData) {
-    try {
-      activeNodes = JSON.parse(atob(sessionData));
-    } catch (e) {
-      console.error("Invalid session data in URL");
+  const activeNodes: Node[] = React.useMemo(() => {
+    if (sessionData) {
+      try {
+        return JSON.parse(atob(sessionData));
+      } catch (e) {
+        console.error("Invalid session data in URL");
+      }
     }
-  }
+    return storeNodes;
+  }, [sessionData, storeNodes]);
 
-  // Anti-Cheat Mechanics
+  // Track fullscreen state
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const inFullscreen = !!document.fullscreenElement;
+      setIsFullscreen(inFullscreen);
+
+      if (!inFullscreen && isRecording) {
+        setStrikes(prev => [...prev, `Exited fullscreen at ${new Date().toLocaleTimeString()}`]);
+        toast.error("Anti-Cheat: Fullscreen Exited!");
+      }
+    };
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, [isRecording]);
+
+  // Anti-Cheat: tab visibility
   useEffect(() => {
     if (!isRecording) return;
 
@@ -61,21 +79,26 @@ export const Interviewer: React.FC = () => {
       }
     };
 
-    const handleFullscreenChange = () => {
-      if (!document.fullscreenElement) {
-        setStrikes(prev => [...prev, `Exited fullscreen at ${new Date().toLocaleTimeString()}`]);
-        toast.error("Anti-Cheat: Fullscreen Exited!");
-      }
-    };
-
     document.addEventListener("visibilitychange", handleVisibilityChange);
-    document.addEventListener("fullscreenchange", handleFullscreenChange);
-
-    return () => {
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      document.removeEventListener("fullscreenchange", handleFullscreenChange);
-    };
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, [isRecording]);
+
+  const enterFullscreen = async () => {
+    try {
+      // Request mic permission NOW while in windowed mode (prompt can display properly).
+      // This prevents the deadlock that occurs when getUserMedia shows a prompt in fullscreen.
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach(t => t.stop());
+
+      await document.documentElement.requestFullscreen();
+    } catch (err: any) {
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        toast.error("Microphone permission is required for the interview.");
+      } else {
+        toast.error("Could not enter fullscreen.");
+      }
+    }
+  };
 
   useEffect(() => {
     if (apiKey) {
@@ -146,17 +169,20 @@ export const Interviewer: React.FC = () => {
     try {
       if (!geminiServiceRef.current) return;
 
-      try {
-        await document.documentElement.requestFullscreen();
-      } catch (e) {
-        console.warn("Fullscreen request failed", e);
-      }
+      // Clean up any existing instances
+      audioRecorderRef.current?.stop();
+      audioPlayerRef.current?.stop();
 
       audioPlayerRef.current?.init();
-      clearTranscript();
 
+      audioRecorderRef.current = new AudioRecorder((base64) => {
+        geminiServiceRef.current?.sendAudio(base64);
+      });
+
+      await audioRecorderRef.current.start();
+      setIsRecording(true);
       const flowInstructions = activeNodes.map((n, i) => `${i + 1}. ${n.data.label}: ${n.data.description}`).join('\n');
-      const systemPrompt = `You are an elite, highly rigorous senior technical interviewer. The candidate's name is ${candidateName}. Greet them briefly, then immediately start Phase 1.
+      const systemPrompt = `You are an elite, highly rigorous senior technical interviewer and polite . The candidate's name is ${candidateName}. Greet them briefly, then immediately start Phase 1.
       
 INTERVIEW PHASES:
 ${flowInstructions}
@@ -167,55 +193,18 @@ CRITICAL BEHAVIORAL RULES:
 3. Cross-question the candidate. If they give an answer, ask "Why?" or probe deeper into their reasoning to make them think.
 4. DO NOT give hints on their first attempt. Let them struggle and think. Only provide a tiny, abstract hint if they are completely stuck after multiple attempts.
 5. Wait patiently for the candidate to finish speaking or typing code.
-6. Keep your responses concise and focused exclusively on evaluating their technical skills.`;
+6. Keep your responses concise and focused exclusively on evaluating their technical skills.
+7. Alwyas have to be polite and humble`;
 
+      clearTranscript();
       geminiServiceRef.current.connect(systemPrompt);
 
-      audioRecorderRef.current = new AudioRecorder((base64) => {
-        geminiServiceRef.current?.sendAudio(base64);
-      });
-
-      await audioRecorderRef.current.start();
-      setIsRecording(true);
-
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (SpeechRecognition) {
-        speechRecognitionRef.current = new SpeechRecognition();
-        speechRecognitionRef.current.continuous = true;
-        speechRecognitionRef.current.interimResults = false;
-
-        speechRecognitionRef.current.onresult = (event: any) => {
-          let finalTranscript = '';
-          for (let i = event.resultIndex; i < event.results.length; ++i) {
-            if (event.results[i].isFinal) {
-              finalTranscript += event.results[i][0].transcript;
-            }
-          }
-          if (finalTranscript.trim()) {
-            addTranscriptItem({ id: Date.now().toString(), sender: 'user', text: finalTranscript.trim() });
-          }
-        };
-
-        speechRecognitionRef.current.onend = () => {
-          if (audioRecorderRef.current && speechRecognitionRef.current) {
-            setTimeout(() => {
-              try { speechRecognitionRef.current?.start(); } catch (e) { }
-            }, 1000);
-          }
-        };
-
-        speechRecognitionRef.current.onerror = (event: any) => {
-          console.warn("Speech recognition error:", event.error);
-          if (event.error === 'not-allowed' && speechRecognitionRef.current) {
-            speechRecognitionRef.current.onend = null; // Prevent infinite loop on permission denied
-          }
-        };
-
-        try { speechRecognitionRef.current.start(); } catch (e) { }
-      }
     } catch (err) {
       toast.error("Microphone Denied or failed to start call.");
       console.error("Failed to start call", err);
+      audioRecorderRef.current?.stop();
+      geminiServiceRef.current?.disconnect();
+      setIsRecording(false);
     }
   };
 
@@ -224,10 +213,6 @@ CRITICAL BEHAVIORAL RULES:
       audioRecorderRef.current?.stop();
       audioPlayerRef.current?.stop();
       geminiServiceRef.current?.disconnect();
-      if (speechRecognitionRef.current) {
-        speechRecognitionRef.current.onend = null;
-        try { speechRecognitionRef.current.stop(); } catch (e) { }
-      }
       setIsRecording(false);
       toast('Call ended', { icon: '📞' });
     }
@@ -241,6 +226,10 @@ CRITICAL BEHAVIORAL RULES:
     if (isRecording) endCall();
     else startCall();
   };
+
+  const handleCodeChange = React.useCallback((code: string, lang: string) => {
+    geminiServiceRef.current?.sendCodeContext(code, lang);
+  }, []);
 
   return (
     <PageTransition className="flex w-full h-full">
@@ -300,7 +289,7 @@ CRITICAL BEHAVIORAL RULES:
                 transition={{ type: "spring", stiffness: 300, damping: 30 }}
                 className="h-full rounded-3xl overflow-hidden shadow-2xl origin-right flex-1"
               >
-                <CodeEditor onCodeChange={(code, lang) => geminiServiceRef.current?.sendCodeContext(code, lang)} />
+                <CodeEditor onCodeChange={handleCodeChange} />
               </motion.div>
             )}
           </AnimatePresence>
@@ -325,14 +314,35 @@ CRITICAL BEHAVIORAL RULES:
           </motion.div>
         </div>
 
-        <AnimatePresence>
-          {!isRecording && (
+        <AnimatePresence mode="wait">
+          {!isRecording && !isFullscreen && (
             <motion.div
+              key="fullscreen-prompt"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 20 }}
-              className="absolute bottom-10 left-1/2 -translate-x-1/2 flex items-center gap-6 z-30"
+              className="absolute bottom-10 left-1/2 -translate-x-1/2 flex flex-col items-center gap-3 z-30"
             >
+              <p className="text-sm text-textMuted">Enter fullscreen to begin the interview</p>
+              <Button
+                size="lg"
+                onClick={enterFullscreen}
+                className="!px-8 !py-4 !rounded-full shadow-[0_0_40px_rgba(99,102,241,0.4)] hover:shadow-[0_0_60px_rgba(99,102,241,0.6)]"
+              >
+                <Maximize size={24} className="text-black mr-2" />
+                <span className="text-black font-semibold">Enter Fullscreen</span>
+              </Button>
+            </motion.div>
+          )}
+          {!isRecording && isFullscreen && (
+            <motion.div
+              key="call-prompt"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              className="absolute bottom-10 left-1/2 -translate-x-1/2 flex flex-col items-center gap-3 z-30"
+            >
+              <p className="text-sm text-textMuted">Ready — start the interview call</p>
               <Button
                 size="lg"
                 onClick={toggleCall}

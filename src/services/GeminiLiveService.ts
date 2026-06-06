@@ -43,7 +43,9 @@ export class GeminiLiveService {
           },
           systemInstruction: {
             parts: [{ text: systemInstructions }]
-          }
+          },
+          outputAudioTranscription: { },
+          inputAudioTranscription: { }
         }
       };
 
@@ -76,12 +78,16 @@ export class GeminiLiveService {
   private handleIncomingMessage(data: any) {
     try {
       const parsed = typeof data === 'string' ? JSON.parse(data) : data;
-      console.log("Incoming Gemini WS Message:", Object.keys(parsed));
+      
+      // If the API returns an array of messages, process each one
+      if (Array.isArray(parsed)) {
+        parsed.forEach(msg => this.handleIncomingMessage(msg));
+        return;
+      }
 
       if (parsed.setupComplete) {
         console.log("Setup complete. Ready for audio streaming.");
         this.isSetupComplete = true;
-        // Removed sendText to prevent modality conflicts; AI will respond when it hears the user.
       }
 
       // Look for serverContent
@@ -89,11 +95,15 @@ export class GeminiLiveService {
         if (parsed.serverContent.modelTurn) {
           const parts = parsed.serverContent.modelTurn.parts;
           for (const part of parts) {
+            // Log non-audio parts (like Transcriptions!) to find the structure
+            if (!part.inlineData) {
+              console.log("Gemini STT Payload found:", part);
+            }
             // Handle Audio
             if (part.inlineData && part.inlineData.mimeType.startsWith('audio/pcm')) {
               this.onAudioData?.(part.inlineData.data);
             }
-            // Handle Text / Text-to-Speech Transcript
+            // Handle AI Text Transcript
             if (part.text) {
               this.onTextContent?.(part.text, false);
             }

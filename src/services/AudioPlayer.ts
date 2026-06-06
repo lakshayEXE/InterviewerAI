@@ -8,7 +8,11 @@ export class AudioPlayer {
 
   init() {
     if (!this.audioContext) {
-      this.audioContext = new window.AudioContext({ sampleRate: 24000 });
+      try {
+        this.audioContext = new window.AudioContext({ sampleRate: 24000 });
+      } catch {
+        this.audioContext = new window.AudioContext();
+      }
       this.analyser = this.audioContext.createAnalyser();
       this.analyser.fftSize = 256;
       this.analyser.connect(this.audioContext.destination);
@@ -23,7 +27,8 @@ export class AudioPlayer {
     const pcm16Data = this.base64ToInt16Array(base64Data);
     const float32Data = this.int16ToFloat32(pcm16Data);
     
-    const buffer = this.audioContext.createBuffer(1, float32Data.length, 24000);
+    const sourceSampleRate = 24000;
+    const buffer = this.audioContext.createBuffer(1, float32Data.length, sourceSampleRate);
     buffer.copyToChannel(float32Data as any, 0);
 
     const source = this.audioContext.createBufferSource();
