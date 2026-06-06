@@ -39,6 +39,7 @@ export const Interviewer: React.FC = () => {
   const audioRecorderRef = useRef<AudioRecorder | null>(null);
   const audioPlayerRef = useRef<AudioPlayer | null>(null);
   const geminiServiceRef = useRef<GeminiLiveService | null>(null);
+  const speechRecognitionRef = useRef<any>(null);
 
   let activeNodes: Node[] = storeNodes;
   if (sessionData) {
@@ -92,11 +93,25 @@ export const Interviewer: React.FC = () => {
       };
 
       let currentAiText = '';
+      let textTimeout: number | null = null;
+      
       geminiServiceRef.current.onTextContent = (text, isFinal) => {
         if (text) currentAiText += text;
-        if (isFinal && currentAiText.trim()) {
-          addTranscriptItem({ id: Date.now().toString(), sender: 'ai', text: currentAiText });
-          currentAiText = '';
+        
+        if (textTimeout) clearTimeout(textTimeout);
+        
+        if (isFinal) {
+          if (currentAiText.trim()) {
+            addTranscriptItem({ id: Date.now().toString(), sender: 'ai', text: currentAiText.trim() });
+            currentAiText = '';
+          }
+        } else {
+          textTimeout = setTimeout(() => {
+            if (currentAiText.trim()) {
+              addTranscriptItem({ id: Date.now().toString(), sender: 'ai', text: currentAiText.trim() });
+              currentAiText = '';
+            }
+          }, 2000); // Save if AI pauses for 2s without sending turnComplete
         }
       };
     }
@@ -154,6 +169,33 @@ export const Interviewer: React.FC = () => {
 
       await audioRecorderRef.current.start();
       setIsRecording(true);
+
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        speechRecognitionRef.current = new SpeechRecognition();
+        speechRecognitionRef.current.continuous = true;
+        speechRecognitionRef.current.interimResults = false;
+        
+        speechRecognitionRef.current.onresult = (event: any) => {
+          let finalTranscript = '';
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            if (event.results[i].isFinal) {
+              finalTranscript += event.results[i][0].transcript;
+            }
+          }
+          if (finalTranscript.trim()) {
+            addTranscriptItem({ id: Date.now().toString(), sender: 'user', text: finalTranscript.trim() });
+          }
+        };
+
+        speechRecognitionRef.current.onend = () => {
+          if (audioRecorderRef.current) {
+            try { speechRecognitionRef.current?.start(); } catch(e) {}
+          }
+        };
+
+        try { speechRecognitionRef.current.start(); } catch(e) {}
+      }
     } catch (err) {
       toast.error("Microphone Denied or failed to start call.");
       console.error("Failed to start call", err);
@@ -165,6 +207,10 @@ export const Interviewer: React.FC = () => {
       audioRecorderRef.current?.stop();
       audioPlayerRef.current?.stop();
       geminiServiceRef.current?.disconnect();
+      if (speechRecognitionRef.current) {
+        speechRecognitionRef.current.onend = null;
+        try { speechRecognitionRef.current.stop(); } catch(e) {}
+      }
       setIsRecording(false);
       toast('Call ended', { icon: '📞' });
     }
