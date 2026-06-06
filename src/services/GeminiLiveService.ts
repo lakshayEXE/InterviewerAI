@@ -134,7 +134,7 @@ export class GeminiLiveService {
     }
   }
 
-  sendCodeContext(code: string) {
+  sendCodeContext(code: string, language: string = "javascript") {
     if (!this.isSetupComplete) return;
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       const msg = {
@@ -142,7 +142,7 @@ export class GeminiLiveService {
           turns: [
             {
               role: "user",
-              parts: [{ text: `Candidate's current code editor context:\n\`\`\`javascript\n${code}\n\`\`\`` }]
+              parts: [{ text: `Candidate's current code editor context:\n\`\`\`${language}\n${code}\n\`\`\`` }]
             }
           ],
           turnComplete: false

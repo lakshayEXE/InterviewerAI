@@ -251,7 +251,7 @@ export const Interviewer: React.FC = () => {
                 transition={{ type: "spring", stiffness: 300, damping: 30 }}
                 className="h-full rounded-3xl overflow-hidden shadow-2xl origin-right"
               >
-                <CodeEditor onCodeChange={(code) => geminiServiceRef.current?.sendCodeContext(code)} />
+                <CodeEditor onCodeChange={(code, lang) => geminiServiceRef.current?.sendCodeContext(code, lang)} />
               </motion.div>
             )}
           </AnimatePresence>
