@@ -4,7 +4,8 @@ import { Network, Mic2, KeyRound } from 'lucide-react';
 import { useInterviewStore } from '../store/useInterviewStore';
 import { PageTransition } from '../components/ui/PageTransition';
 import { Card } from '../components/ui/Card';
-import { motion, Variants } from 'framer-motion';
+import { motion } from 'framer-motion';
+import type { Variants } from 'framer-motion';
 
 const containerVariants: Variants = {
   hidden: { opacity: 0 },
