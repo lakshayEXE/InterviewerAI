@@ -19,11 +19,11 @@ export const Interviewer: React.FC = () => {
   const { sessionData } = useParams<{ sessionData: string }>();
   const location = useLocation();
   const navigate = useNavigate();
-  
+
   const candidateName = location.state?.candidateName || 'Candidate';
   const apiKey = useInterviewStore(state => state.apiKey);
   const storeNodes = useInterviewStore(state => state.nodes);
-  
+
   const transcript = useInterviewStore(state => state.transcript);
   const addTranscriptItem = useInterviewStore(state => state.addTranscriptItem);
   const clearTranscript = useInterviewStore(state => state.clearTranscript);
@@ -81,7 +81,7 @@ export const Interviewer: React.FC = () => {
     if (apiKey) {
       geminiServiceRef.current = new GeminiLiveService(apiKey);
       audioPlayerRef.current = new AudioPlayer();
-      
+
       geminiServiceRef.current.onConnectionStateChange = (connected) => {
         setIsConnected(connected);
         if (connected) toast.success('Connected to Gemini Live API');
@@ -94,12 +94,12 @@ export const Interviewer: React.FC = () => {
 
       let currentAiText = '';
       let textTimeout: number | null = null;
-      
+
       geminiServiceRef.current.onTextContent = (text, isFinal) => {
         if (text) currentAiText += text;
-        
+
         if (textTimeout) clearTimeout(textTimeout);
-        
+
         if (isFinal) {
           if (currentAiText.trim()) {
             addTranscriptItem({ id: Date.now().toString(), sender: 'ai', text: currentAiText.trim() });
@@ -115,7 +115,7 @@ export const Interviewer: React.FC = () => {
         }
       };
     }
-    
+
     return () => {
       audioRecorderRef.current?.stop();
       audioPlayerRef.current?.stop();
@@ -135,11 +135,8 @@ export const Interviewer: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  useEffect(() => {
-    if (sessionData && location.state?.candidateName && apiKey && !isRecording) {
-      startCall();
-    }
-  }, [sessionData, location.state, apiKey]);
+  // Removed auto-start useEffect to respect browser AudioContext user gesture policies.
+  // The user must explicitly click the Call button to begin.
 
   const startCall = async () => {
     if (!apiKey) {
@@ -154,11 +151,11 @@ export const Interviewer: React.FC = () => {
       } catch (e) {
         console.warn("Fullscreen request failed", e);
       }
-      
+
       audioPlayerRef.current?.init();
       clearTranscript();
-      
-      const flowInstructions = activeNodes.map((n, i) => `${i+1}. ${n.data.label}: ${n.data.description}`).join('\n');
+
+      const flowInstructions = activeNodes.map((n, i) => `${i + 1}. ${n.data.label}: ${n.data.description}`).join('\n');
       const systemPrompt = `You are an elite, highly rigorous senior technical interviewer. The candidate's name is ${candidateName}. Greet them briefly, then immediately start Phase 1.
       
 INTERVIEW PHASES:
@@ -171,7 +168,7 @@ CRITICAL BEHAVIORAL RULES:
 4. DO NOT give hints on their first attempt. Let them struggle and think. Only provide a tiny, abstract hint if they are completely stuck after multiple attempts.
 5. Wait patiently for the candidate to finish speaking or typing code.
 6. Keep your responses concise and focused exclusively on evaluating their technical skills.`;
-      
+
       geminiServiceRef.current.connect(systemPrompt);
 
       audioRecorderRef.current = new AudioRecorder((base64) => {
@@ -186,7 +183,7 @@ CRITICAL BEHAVIORAL RULES:
         speechRecognitionRef.current = new SpeechRecognition();
         speechRecognitionRef.current.continuous = true;
         speechRecognitionRef.current.interimResults = false;
-        
+
         speechRecognitionRef.current.onresult = (event: any) => {
           let finalTranscript = '';
           for (let i = event.resultIndex; i < event.results.length; ++i) {
@@ -200,12 +197,21 @@ CRITICAL BEHAVIORAL RULES:
         };
 
         speechRecognitionRef.current.onend = () => {
-          if (audioRecorderRef.current) {
-            try { speechRecognitionRef.current?.start(); } catch(e) {}
+          if (audioRecorderRef.current && speechRecognitionRef.current) {
+            setTimeout(() => {
+              try { speechRecognitionRef.current?.start(); } catch (e) { }
+            }, 1000);
           }
         };
 
-        try { speechRecognitionRef.current.start(); } catch(e) {}
+        speechRecognitionRef.current.onerror = (event: any) => {
+          console.warn("Speech recognition error:", event.error);
+          if (event.error === 'not-allowed' && speechRecognitionRef.current) {
+            speechRecognitionRef.current.onend = null; // Prevent infinite loop on permission denied
+          }
+        };
+
+        try { speechRecognitionRef.current.start(); } catch (e) { }
       }
     } catch (err) {
       toast.error("Microphone Denied or failed to start call.");
@@ -220,7 +226,7 @@ CRITICAL BEHAVIORAL RULES:
       geminiServiceRef.current?.disconnect();
       if (speechRecognitionRef.current) {
         speechRecognitionRef.current.onend = null;
-        try { speechRecognitionRef.current.stop(); } catch(e) {}
+        try { speechRecognitionRef.current.stop(); } catch (e) { }
       }
       setIsRecording(false);
       toast('Call ended', { icon: '📞' });
@@ -271,10 +277,10 @@ CRITICAL BEHAVIORAL RULES:
         {strikes.length > 0 && (
           <div className="absolute top-24 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 pointer-events-none">
             {strikes.map((strike, i) => (
-              <motion.div 
-                key={i} 
-                initial={{ opacity: 0, y: -20, scale: 0.9 }} 
-                animate={{ opacity: 1, y: 0, scale: 1 }} 
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, y: -20, scale: 0.9 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
                 className="bg-red-500/90 text-white px-5 py-3 rounded-xl font-bold shadow-[0_0_30px_rgba(239,68,68,0.4)] flex items-center gap-3 backdrop-blur-md border border-red-400"
               >
                 <AlertTriangle size={20} className="animate-pulse" />
@@ -287,7 +293,7 @@ CRITICAL BEHAVIORAL RULES:
         <div className="flex-1 relative flex gap-6 overflow-hidden">
           <AnimatePresence>
             {showCodeEditor && (
-              <motion.div 
+              <motion.div
                 initial={{ opacity: 0, x: 20, width: 0 }}
                 animate={{ opacity: 1, x: 0, width: '100%' }}
                 exit={{ opacity: 0, x: 20, width: 0 }}
@@ -299,29 +305,29 @@ CRITICAL BEHAVIORAL RULES:
             )}
           </AnimatePresence>
 
-          <motion.div 
+          <motion.div
             layout
             className={
-              showCodeEditor 
+              showCodeEditor
                 ? "absolute bottom-8 right-8 w-80 h-56 z-50 rounded-3xl border border-white/20 shadow-[0_0_50px_rgba(0,0,0,0.8)] overflow-hidden bg-background/90 backdrop-blur-xl"
                 : "flex-1 relative flex items-center justify-center bg-surfaceHighlight/30 rounded-3xl border border-gray-800/50 overflow-hidden"
             }
             transition={{ type: "spring", bounce: 0.1, duration: 0.6 }}
           >
-             <Visualizer micVolume={micVolume} aiVolume={aiVolume} />
-             
-             {!isConnected && isRecording && (
-               <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/80 backdrop-blur-sm z-20">
-                 <Loader2 className="w-10 h-10 text-primary animate-spin mb-4" />
-                 <p className="text-white font-medium">Connecting to Gemini...</p>
-               </div>
-             )}
+            <Visualizer micVolume={micVolume} aiVolume={aiVolume} />
+
+            {!isConnected && isRecording && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/80 backdrop-blur-sm z-20">
+                <Loader2 className="w-10 h-10 text-primary animate-spin mb-4" />
+                <p className="text-white font-medium">Connecting to Gemini...</p>
+              </div>
+            )}
           </motion.div>
         </div>
 
         <AnimatePresence>
           {!isRecording && (
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 20 }}
@@ -341,7 +347,7 @@ CRITICAL BEHAVIORAL RULES:
       </div>
       <AnimatePresence>
         {!showCodeEditor && (
-          <motion.div 
+          <motion.div
             initial={{ width: 0, opacity: 0 }}
             animate={{ width: 320, opacity: 1 }}
             exit={{ width: 0, opacity: 0 }}

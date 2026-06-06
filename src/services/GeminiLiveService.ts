@@ -8,7 +8,7 @@ export class GeminiLiveService {
   private ws: WebSocket | null = null;
   private url: string = 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent';
   private apiKey: string = '';
-  
+
   public onAudioData: ((base64Data: string) => void) | null = null;
   public onTextContent: ((text: string, isFinal: boolean) => void) | null = null;
   public onConnectionStateChange: ((connected: boolean) => void) | null = null;
@@ -23,10 +23,15 @@ export class GeminiLiveService {
       return;
     }
 
-    const wsUrl = `${this.url}?key=${this.apiKey}`;
-    this.ws = new WebSocket(wsUrl);
+    if (this.ws) {
+      this.ws.close();
+    }
 
-    this.ws.onopen = () => {
+    const wsUrl = `${this.url}?key=${this.apiKey}`;
+    const ws = new WebSocket(wsUrl);
+    this.ws = ws;
+
+    ws.onopen = () => {
       console.log("WebSocket connected. Sending setup message...");
       this.onConnectionStateChange?.(true);
 
@@ -34,7 +39,7 @@ export class GeminiLiveService {
         setup: {
           model: "models/gemini-3.1-flash-live-preview",
           generationConfig: {
-            responseModalities: ["AUDIO", "TEXT"]
+            responseModalities: ["AUDIO"]
           },
           systemInstruction: {
             parts: [{ text: systemInstructions }]
@@ -42,10 +47,10 @@ export class GeminiLiveService {
         }
       };
 
-      this.ws?.send(JSON.stringify(setupMessage));
+      ws.send(JSON.stringify(setupMessage));
     };
 
-    this.ws.onmessage = async (event) => {
+    ws.onmessage = async (event) => {
       let data = event.data;
       if (data instanceof Blob) {
         data = await data.text();
@@ -53,14 +58,16 @@ export class GeminiLiveService {
       this.handleIncomingMessage(data);
     };
 
-    this.ws.onerror = (error) => {
+    ws.onerror = (error) => {
       console.error("WebSocket error:", error);
     };
 
-    this.ws.onclose = (event) => {
+    ws.onclose = (event) => {
       console.log(`WebSocket closed. Code: ${event.code}, Reason: ${event.reason}`);
       this.onConnectionStateChange?.(false);
-      this.ws = null;
+      if (this.ws === ws) {
+        this.ws = null;
+      }
     };
   }
 
@@ -70,7 +77,7 @@ export class GeminiLiveService {
     try {
       const parsed = typeof data === 'string' ? JSON.parse(data) : data;
       console.log("Incoming Gemini WS Message:", Object.keys(parsed));
-      
+
       if (parsed.setupComplete) {
         console.log("Setup complete. Ready for audio streaming.");
         this.isSetupComplete = true;
@@ -142,10 +149,10 @@ export class GeminiLiveService {
           turns: [
             {
               role: "user",
-              parts: [{ text: `Candidate's current code editor context:\n\`\`\`${language}\n${code}\n\`\`\`` }]
+              parts: [{ text: `[SYSTEM INJECTION: The candidate just updated their code. DO NOT respond or acknowledge this update out loud. Just keep it in mind for when they ask a question.]\n\nCandidate's current code editor context:\n\`\`\`${language}\n${code}\n\`\`\`` }]
             }
           ],
-          turnComplete: false
+          turnComplete: true
         }
       };
       this.ws.send(JSON.stringify(msg));
