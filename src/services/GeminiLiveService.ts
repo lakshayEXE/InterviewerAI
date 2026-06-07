@@ -10,14 +10,19 @@ export class GeminiLiveService {
   private apiKey: string = '';
 
   public onAudioData: ((base64Data: string) => void) | null = null;
-  public onTextContent: ((text: string, isFinal: boolean) => void) | null = null;
+  // Fires once per completed utterance, for both the candidate (user) and the AI interviewer.
+  public onTranscript: ((sender: 'ai' | 'user', text: string) => void) | null = null;
   public onConnectionStateChange: ((connected: boolean) => void) | null = null;
+
+  // Accumulate streaming transcription chunks until an utterance is complete.
+  private userBuffer: string = '';
+  private aiBuffer: string = '';
 
   constructor(apiKey: string) {
     this.apiKey = apiKey;
   }
 
-  connect(systemInstructions: string) {
+  connect(systemInstructions: string, voice?: { voiceName?: string; languageCode?: string }) {
     if (!this.apiKey) {
       console.error("No API key provided for GeminiLiveService.");
       return;
@@ -35,17 +40,35 @@ export class GeminiLiveService {
       console.log("WebSocket connected. Sending setup message...");
       this.onConnectionStateChange?.(true);
 
+      const speechConfig: any = {};
+      if (voice?.voiceName) {
+        speechConfig.voiceConfig = { prebuiltVoiceConfig: { voiceName: voice.voiceName } };
+      }
+      if (voice?.languageCode) {
+        speechConfig.languageCode = voice.languageCode;
+      }
+
       const setupMessage = {
         setup: {
           model: "models/gemini-3.1-flash-live-preview",
           generationConfig: {
-            responseModalities: ["AUDIO"]
+            responseModalities: ["AUDIO"],
+            ...(Object.keys(speechConfig).length > 0 ? { speechConfig } : {}),
           },
           systemInstruction: {
             parts: [{ text: systemInstructions }]
           },
           outputAudioTranscription: { },
-          inputAudioTranscription: { }
+          inputAudioTranscription: { },
+          // Be patient: tolerate longer thinking pauses before treating the candidate as done.
+          realtimeInputConfig: {
+            automaticActivityDetection: {
+              startOfSpeechSensitivity: "START_SENSITIVITY_LOW",
+              endOfSpeechSensitivity: "END_SENSITIVITY_LOW",
+              prefixPaddingMs: 300,
+              silenceDurationMs: 1800
+            }
+          }
         }
       };
 
@@ -92,30 +115,55 @@ export class GeminiLiveService {
 
       // Look for serverContent
       if (parsed.serverContent) {
-        if (parsed.serverContent.modelTurn) {
-          const parts = parsed.serverContent.modelTurn.parts;
-          for (const part of parts) {
-            // Log non-audio parts (like Transcriptions!) to find the structure
-            if (!part.inlineData) {
-              console.log("Gemini STT Payload found:", part);
-            }
-            // Handle Audio
-            if (part.inlineData && part.inlineData.mimeType.startsWith('audio/pcm')) {
+        const sc = parsed.serverContent;
+
+        // Candidate's speech transcription (from inputAudioTranscription).
+        // Streams in chunks, so accumulate until the candidate's turn is over.
+        if (sc.inputTranscription?.text) {
+          this.userBuffer += sc.inputTranscription.text;
+        }
+
+        // AI interviewer's speech transcription (from outputAudioTranscription).
+        // When the model starts speaking, the candidate has finished — flush their turn first.
+        if (sc.outputTranscription?.text) {
+          this.flushUser();
+          this.aiBuffer += sc.outputTranscription.text;
+        }
+
+        // Audio playback (and a fallback for any text parts the model still emits).
+        if (sc.modelTurn?.parts) {
+          for (const part of sc.modelTurn.parts) {
+            if (part.inlineData && part.inlineData.mimeType?.startsWith('audio/pcm')) {
               this.onAudioData?.(part.inlineData.data);
             }
-            // Handle AI Text Transcript
             if (part.text) {
-              this.onTextContent?.(part.text, false);
+              this.flushUser();
+              this.aiBuffer += part.text;
             }
           }
         }
-        if (parsed.serverContent.turnComplete) {
-          this.onTextContent?.('', true);
+
+        // End of the model's turn: commit whatever is buffered for both sides.
+        if (sc.turnComplete) {
+          this.flushUser();
+          this.flushAi();
         }
       }
     } catch (err) {
       console.error("Failed to parse incoming WS message", err);
     }
+  }
+
+  private flushUser() {
+    const text = this.userBuffer.trim();
+    this.userBuffer = '';
+    if (text) this.onTranscript?.('user', text);
+  }
+
+  private flushAi() {
+    const text = this.aiBuffer.trim();
+    this.aiBuffer = '';
+    if (text) this.onTranscript?.('ai', text);
   }
 
   sendAudio(base64Data: string) {
@@ -172,6 +220,8 @@ export class GeminiLiveService {
 
   disconnect() {
     this.isSetupComplete = false;
+    this.userBuffer = '';
+    this.aiBuffer = '';
     if (this.ws) {
       this.ws.close();
       this.ws = null;

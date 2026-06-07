@@ -9,6 +9,8 @@ import { AudioRecorder } from '../services/AudioRecorder';
 import { AudioPlayer } from '../services/AudioPlayer';
 import { GeminiLiveService } from '../services/GeminiLiveService';
 import { useInterviewStore } from '../store/useInterviewStore';
+import { buildSystemPrompt } from '../utils/promptBuilder';
+import { decodeSessionPayload } from '../utils/sessionPayload';
 import type { Node } from 'reactflow';
 import { PageTransition } from '../components/ui/PageTransition';
 import { Card } from '../components/ui/Card';
@@ -23,10 +25,15 @@ export const Interviewer: React.FC = () => {
   const candidateName = location.state?.candidateName || 'Candidate';
   const apiKey = useInterviewStore(state => state.apiKey);
   const storeNodes = useInterviewStore(state => state.nodes);
+  const companyInfo = useInterviewStore(state => state.companyInfo);
+  const interviewerConfig = useInterviewStore(state => state.interviewerConfig);
 
   const transcript = useInterviewStore(state => state.transcript);
   const addTranscriptItem = useInterviewStore(state => state.addTranscriptItem);
   const clearTranscript = useInterviewStore(state => state.clearTranscript);
+  const setSessionActive = useInterviewStore(state => state.setSessionActive);
+  const setEvaluation = useInterviewStore(state => state.setEvaluation);
+  const setSessionNodes = useInterviewStore(state => state.setSessionNodes);
 
   const [isConnected, setIsConnected] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -41,16 +48,21 @@ export const Interviewer: React.FC = () => {
   const audioPlayerRef = useRef<AudioPlayer | null>(null);
   const geminiServiceRef = useRef<GeminiLiveService | null>(null);
 
-  const activeNodes: Node[] = React.useMemo(() => {
+  const session = React.useMemo(() => {
     if (sessionData) {
-      try {
-        return JSON.parse(atob(sessionData));
-      } catch (e) {
-        console.error("Invalid session data in URL");
+      const decoded = decodeSessionPayload(sessionData);
+      if (decoded) {
+        return {
+          nodes: decoded.nodes,
+          config: decoded.config ?? interviewerConfig,
+          companyInfo: decoded.companyInfo ?? companyInfo,
+        };
       }
     }
-    return storeNodes;
-  }, [sessionData, storeNodes]);
+    return { nodes: storeNodes, config: interviewerConfig, companyInfo };
+  }, [sessionData, storeNodes, interviewerConfig, companyInfo]);
+
+  const activeNodes: Node[] = session.nodes;
 
   // Track fullscreen state
   useEffect(() => {
@@ -115,27 +127,15 @@ export const Interviewer: React.FC = () => {
         audioPlayerRef.current?.playChunk(base64);
       };
 
-      let currentAiText = '';
-      let textTimeout: number | null = null;
-
-      geminiServiceRef.current.onTextContent = (text, isFinal) => {
-        if (text) currentAiText += text;
-
-        if (textTimeout) clearTimeout(textTimeout);
-
-        if (isFinal) {
-          if (currentAiText.trim()) {
-            addTranscriptItem({ id: Date.now().toString(), sender: 'ai', text: currentAiText.trim() });
-            currentAiText = '';
-          }
-        } else {
-          textTimeout = setTimeout(() => {
-            if (currentAiText.trim()) {
-              addTranscriptItem({ id: Date.now().toString(), sender: 'ai', text: currentAiText.trim() });
-              currentAiText = '';
-            }
-          }, 2000); // Save if AI pauses for 2s without sending turnComplete
-        }
+      geminiServiceRef.current.onTranscript = (sender, text) => {
+        const clean = text.trim();
+        if (!clean) return;
+        addTranscriptItem({
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          sender,
+          text: clean,
+          timestamp: Date.now(),
+        });
       };
     }
 
@@ -143,6 +143,7 @@ export const Interviewer: React.FC = () => {
       audioRecorderRef.current?.stop();
       audioPlayerRef.current?.stop();
       geminiServiceRef.current?.disconnect();
+      setSessionActive(false);
     };
   }, [apiKey]);
 
@@ -181,23 +182,16 @@ export const Interviewer: React.FC = () => {
 
       await audioRecorderRef.current.start();
       setIsRecording(true);
-      const flowInstructions = activeNodes.map((n, i) => `${i + 1}. ${n.data.label}: ${n.data.description}`).join('\n');
-      const systemPrompt = `You are an elite, highly rigorous senior technical interviewer and polite . The candidate's name is ${candidateName}. Greet them briefly, then immediately start Phase 1.
-      
-INTERVIEW PHASES:
-${flowInstructions}
+      setSessionActive(true);
 
-CRITICAL BEHAVIORAL RULES:
-1. DO NOT give away the answer under any circumstances.
-2. If the candidate gives a wrong answer or writes buggy code, DO NOT say "That's right" or "Good job". Call out the flaw politely but firmly.
-3. Cross-question the candidate. If they give an answer, ask "Why?" or probe deeper into their reasoning to make them think.
-4. DO NOT give hints on their first attempt. Let them struggle and think. Only provide a tiny, abstract hint if they are completely stuck after multiple attempts.
-5. Wait patiently for the candidate to finish speaking or typing code.
-6. Keep your responses concise and focused exclusively on evaluating their technical skills.
-7. Alwyas have to be polite and humble`;
-
+      const systemPrompt = buildSystemPrompt(activeNodes, candidateName, session.companyInfo, session.config);
       clearTranscript();
-      geminiServiceRef.current.connect(systemPrompt);
+      setEvaluation(null);
+      setSessionNodes(activeNodes);
+      geminiServiceRef.current.connect(systemPrompt, {
+        voiceName: session.config.voiceName,
+        languageCode: session.config.languageCode,
+      });
 
     } catch (err) {
       toast.error("Microphone Denied or failed to start call.");
@@ -205,6 +199,7 @@ CRITICAL BEHAVIORAL RULES:
       audioRecorderRef.current?.stop();
       geminiServiceRef.current?.disconnect();
       setIsRecording(false);
+      setSessionActive(false);
     }
   };
 
@@ -216,6 +211,7 @@ CRITICAL BEHAVIORAL RULES:
       setIsRecording(false);
       toast('Call ended', { icon: '📞' });
     }
+    setSessionActive(false);
     if (document.fullscreenElement) {
       document.exitFullscreen().catch(console.warn);
     }
@@ -233,7 +229,7 @@ CRITICAL BEHAVIORAL RULES:
 
   return (
     <PageTransition className="flex w-full h-full">
-      <div className="flex-1 flex flex-col p-6 gap-6 relative">
+      <div className="flex-1 flex flex-col pt-20 px-6 pb-6 gap-6 relative">
         <Card className="!p-4 flex justify-between items-center z-10 shrink-0">
           <div className="flex items-center gap-4">
             <div className="relative flex h-3 w-3">
@@ -246,7 +242,7 @@ CRITICAL BEHAVIORAL RULES:
               </h1>
               <div className="text-xs text-textMuted font-medium flex items-center gap-2 mt-1">
                 <User size={12} /> {candidateName}
-                <span className="text-gray-700">|</span>
+                <span className="text-white/20">|</span>
                 <span>{activeNodes.length} Stages</span>
               </div>
             </div>
@@ -298,17 +294,30 @@ CRITICAL BEHAVIORAL RULES:
             layout
             className={
               showCodeEditor
-                ? "absolute bottom-8 right-8 w-80 h-56 z-50 rounded-3xl border border-white/20 shadow-[0_0_50px_rgba(0,0,0,0.8)] overflow-hidden bg-background/90 backdrop-blur-xl"
-                : "flex-1 relative flex items-center justify-center bg-surfaceHighlight/30 rounded-3xl border border-gray-800/50 overflow-hidden"
+                ? "absolute bottom-8 right-8 w-80 h-56 z-50 rounded-3xl border border-white/10 shadow-[0_0_50px_rgba(0,0,0,0.8)] overflow-hidden bg-surface/90 backdrop-blur-xl"
+                : "flex-1 relative flex items-center justify-center bg-surface/30 rounded-3xl border border-white/[0.06] overflow-hidden"
             }
             transition={{ type: "spring", bounce: 0.1, duration: 0.6 }}
           >
             <Visualizer micVolume={micVolume} aiVolume={aiVolume} />
 
+            {/* Speaking-state label (full-size only) */}
+            {!showCodeEditor && isConnected && isRecording && (
+              <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-2.5 px-4 py-2 rounded-full glass-panel">
+                <span className="relative flex h-2 w-2">
+                  <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${aiVolume >= micVolume ? 'bg-primary' : 'bg-sky-400'}`} />
+                  <span className={`relative inline-flex rounded-full h-2 w-2 ${aiVolume >= micVolume ? 'bg-primary' : 'bg-sky-400'}`} />
+                </span>
+                <span className="text-sm font-medium text-textMain">
+                  {aiVolume >= micVolume ? 'AI speaking' : 'Listening'}
+                </span>
+              </div>
+            )}
+
             {!isConnected && isRecording && (
               <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/80 backdrop-blur-sm z-20">
                 <Loader2 className="w-10 h-10 text-primary animate-spin mb-4" />
-                <p className="text-white font-medium">Connecting to Gemini...</p>
+                <p className="text-textMain font-medium">Connecting to Gemini...</p>
               </div>
             )}
           </motion.div>
@@ -327,10 +336,10 @@ CRITICAL BEHAVIORAL RULES:
               <Button
                 size="lg"
                 onClick={enterFullscreen}
-                className="!px-8 !py-4 !rounded-full shadow-[0_0_40px_rgba(99,102,241,0.4)] hover:shadow-[0_0_60px_rgba(99,102,241,0.6)]"
+                className="!px-8 !py-4 !rounded-full"
               >
-                <Maximize size={24} className="text-black mr-2" />
-                <span className="text-black font-semibold">Enter Fullscreen</span>
+                <Maximize size={22} className="text-white mr-2" />
+                <span className="text-white font-semibold">Enter Fullscreen</span>
               </Button>
             </motion.div>
           )}
@@ -347,9 +356,9 @@ CRITICAL BEHAVIORAL RULES:
                 size="lg"
                 onClick={toggleCall}
                 disabled={!apiKey}
-                className="!p-6 !rounded-full shadow-[0_0_40px_rgba(74,222,128,0.4)] hover:shadow-[0_0_60px_rgba(74,222,128,0.6)]"
+                className="!p-6 !rounded-full"
               >
-                <PhoneCall size={32} className="text-black" />
+                <PhoneCall size={32} className="text-white" />
               </Button>
             </motion.div>
           )}
@@ -362,7 +371,7 @@ CRITICAL BEHAVIORAL RULES:
             animate={{ width: 320, opacity: 1 }}
             exit={{ width: 0, opacity: 0 }}
             transition={{ type: "spring", bounce: 0, duration: 0.4 }}
-            className="shrink-0 h-full border-l border-gray-800 bg-background/50 backdrop-blur-md overflow-hidden"
+            className="shrink-0 h-full bg-background/50 backdrop-blur-md overflow-hidden"
           >
             <div className="w-80 h-full">
               <TranscriptSidebar transcript={transcript} />

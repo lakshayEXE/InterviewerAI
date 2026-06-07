@@ -1,56 +1,55 @@
-import React, { useCallback, useState } from 'react';
-import ReactFlow, { 
-  Background, 
-  Controls, 
+import React, { useCallback, useState, useRef, useEffect } from 'react';
+import ReactFlow, {
+  Background,
+  Controls,
   applyNodeChanges,
   applyEdgeChanges,
-  addEdge
+  addEdge,
 } from 'reactflow';
 import type { Node, NodeChange, EdgeChange, Connection } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { useInterviewStore } from '../store/useInterviewStore';
-import { Handle, Position } from 'reactflow';
-import { Link2, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { PageTransition } from '../components/ui/PageTransition';
-import { Button } from '../components/ui/Button';
-import { Card } from '../components/ui/Card';
-import { motion, AnimatePresence } from 'framer-motion';
+import { AnimatePresence } from 'framer-motion';
+import { CustomFlowNode } from '../components/flow/CustomNode';
+import { NodePalette } from '../components/flow/NodePalette';
+import { NodeConfigPanel } from '../components/flow/NodeConfigPanel';
+import { CompanyConfigPanel } from '../components/flow/CompanyConfigPanel';
+import { InterviewerConfigPanel } from '../components/flow/InterviewerConfigPanel';
+import { GenerateFlowModal } from '../components/flow/GenerateFlowModal';
+import { generateFlowFromJD } from '../services/FlowGeneratorService';
+import { encodeSessionPayload } from '../utils/sessionPayload';
+import { NODE_CATEGORIES } from '../types/flow';
+import type { FlowNodeData } from '../types/flow';
 
-const CustomNode = ({ data, selected }: any) => {
-  return (
-    <motion.div 
-      initial={{ scale: 0.9, opacity: 0 }}
-      animate={{ scale: 1, opacity: 1 }}
-      className={`px-5 py-3 shadow-xl rounded-xl border-2 glass-panel transition-all ${
-      data.isActive ? 'border-accent shadow-[0_0_20px_rgba(56,189,248,0.5)] bg-accent/10' : 
-      selected ? 'border-primary bg-surfaceHighlight' : 'border-gray-800 bg-surface'
-    }`}>
-      <Handle type="target" position={Position.Top} className="w-3 h-3 bg-accent border-2 border-surface" />
-      <div className="flex items-center">
-        <div className="ml-2 max-w-[220px]">
-          <div className="text-base font-bold text-textMain truncate">{data.label}</div>
-          <div className="text-xs text-textMuted line-clamp-2 mt-1">{data.description}</div>
-        </div>
-      </div>
-      <Handle type="source" position={Position.Bottom} className="w-3 h-3 bg-accent border-2 border-surface" />
-    </motion.div>
-  );
-};
-const nodeTypes = { custom: CustomNode };
+const nodeTypes = { custom: CustomFlowNode };
 
 export const FlowBuilder: React.FC = () => {
   const nodes = useInterviewStore(state => state.nodes);
   const edges = useInterviewStore(state => state.edges);
   const setNodes = useInterviewStore(state => state.setNodes);
   const setEdges = useInterviewStore(state => state.setEdges);
+  const apiKey = useInterviewStore(state => state.apiKey);
+  const companyInfo = useInterviewStore(state => state.companyInfo);
+  const setCompanyInfo = useInterviewStore(state => state.setCompanyInfo);
+  const interviewerConfig = useInterviewStore(state => state.interviewerConfig);
+  const setInterviewerConfig = useInterviewStore(state => state.setInterviewerConfig);
+  const setFlowNavActions = useInterviewStore(state => state.setFlowNavActions);
+
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+  const [showCompanyConfig, setShowCompanyConfig] = useState(false);
+  const [showInterviewerConfig, setShowInterviewerConfig] = useState(false);
+  const [showGenerateModal, setShowGenerateModal] = useState(false);
+
+  const reactFlowWrapper = useRef<HTMLDivElement>(null);
+  const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => setNodes((nds) => applyNodeChanges(changes, nds)),
     [setNodes]
   );
-  
+
   const onEdgesChange = useCallback(
     (changes: EdgeChange[]) => setEdges((eds) => applyEdgeChanges(changes, eds)),
     [setEdges]
@@ -63,100 +62,193 @@ export const FlowBuilder: React.FC = () => {
 
   const onNodeClick = (_: React.MouseEvent, node: Node) => {
     setSelectedNode(node);
+    setShowCompanyConfig(false);
+    setShowInterviewerConfig(false);
   };
 
-  const updateNodeData = (id: string, label: string, description: string) => {
+  const updateNodeData = useCallback((id: string, data: Partial<FlowNodeData>) => {
     setNodes(nds => nds.map(n => {
       if (n.id === id) {
-        return { ...n, data: { ...n.data, label, description } };
+        const updated = { ...n, data: { ...n.data, ...data } };
+        return updated;
       }
       return n;
     }));
-    if (selectedNode && selectedNode.id === id) {
-      setSelectedNode({ ...selectedNode, data: { ...selectedNode.data, label, description } });
-    }
-  };
+    setSelectedNode(prev => {
+      if (prev && prev.id === id) {
+        return { ...prev, data: { ...prev.data, ...data } };
+      }
+      return prev;
+    });
+  }, [setNodes]);
 
-  const generateLink = () => {
-    const sessionData = btoa(JSON.stringify(nodes));
+  const deleteNode = useCallback((id: string) => {
+    setNodes(nds => nds.filter(n => n.id !== id));
+    setEdges(eds => eds.filter(e => e.source !== id && e.target !== id));
+    setSelectedNode(null);
+  }, [setNodes, setEdges]);
+
+  const onDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  }, []);
+
+  const onDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    const category = e.dataTransfer.getData('application/reactflow-category');
+    if (!category) return;
+
+    const meta = NODE_CATEGORIES.find(c => c.category === category);
+    if (!meta) return;
+
+    const bounds = reactFlowWrapper.current?.getBoundingClientRect();
+    if (!bounds || !reactFlowInstance) return;
+
+    const position = reactFlowInstance.screenToFlowPosition({
+      x: e.clientX - bounds.left,
+      y: e.clientY - bounds.top,
+    });
+
+    const newNode: Node = {
+      id: `node_${Date.now()}`,
+      type: 'custom',
+      position,
+      data: { ...meta.defaultData },
+    };
+
+    setNodes(nds => [...nds, newNode]);
+
+    // Auto-connect to the last node
+    const currentNodes = nodes;
+    if (currentNodes.length > 0) {
+      const lastNode = currentNodes[currentNodes.length - 1];
+      setEdges(eds => [...eds, {
+        id: `e_${lastNode.id}-${newNode.id}`,
+        source: lastNode.id,
+        target: newNode.id,
+        animated: true,
+        style: { stroke: '#38bdf8' },
+      }]);
+    }
+  }, [reactFlowInstance, nodes, setNodes, setEdges]);
+
+  const generateLink = useCallback(() => {
+    const state = useInterviewStore.getState();
+    const sessionData = encodeSessionPayload({
+      nodes: state.nodes,
+      config: state.interviewerConfig,
+      companyInfo: state.companyInfo,
+    });
     const url = `${window.location.origin}/invite/${sessionData}`;
     navigator.clipboard.writeText(url);
     toast.success('Interview Link Copied to Clipboard!');
+  }, []);
+
+  // Register Flow Builder actions into the top navbar
+  useEffect(() => {
+    setFlowNavActions({
+      onCompanyInfo: () => { setShowCompanyConfig(true); setShowInterviewerConfig(false); setSelectedNode(null); },
+      onInterviewerConfig: () => { setShowInterviewerConfig(true); setShowCompanyConfig(false); setSelectedNode(null); },
+      onGenerateLink: generateLink,
+      onGenerateAI: () => setShowGenerateModal(true),
+    });
+    return () => setFlowNavActions(null);
+  }, [setFlowNavActions, generateLink]);
+
+  const handleAIGenerate = async (jd: string, resume: string) => {
+    if (!apiKey) {
+      toast.error('API key required. Configure it in settings.');
+      throw new Error('No API key');
+    }
+
+    try {
+      const flowData = await generateFlowFromJD(apiKey, jd, resume);
+
+      const newNodes: Node[] = flowData.map((data, i) => ({
+        id: `node_${Date.now()}_${i}`,
+        type: 'custom',
+        position: { x: 250, y: 50 + i * 130 },
+        data,
+      }));
+
+      const newEdges = newNodes.slice(1).map((node, i) => ({
+        id: `e_${newNodes[i].id}-${node.id}`,
+        source: newNodes[i].id,
+        target: node.id,
+        animated: true,
+        style: { stroke: '#38bdf8' },
+      }));
+
+      setNodes(newNodes);
+      setEdges(newEdges);
+      setSelectedNode(null);
+      toast.success(`Generated ${newNodes.length} interview stages!`);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to generate flow');
+      throw err;
+    }
   };
 
   return (
-    <PageTransition className="p-6">
-      <div className="w-full h-full flex flex-col md:flex-row gap-6 relative">
-        <div className="flex-1 flex flex-col h-full min-h-[500px]">
-          <div className="mb-6 flex justify-between items-end">
-            <div>
-              <h2 className="text-3xl font-extrabold text-white mb-2">Flow Builder</h2>
-              <p className="text-textMuted text-base">Architect the interview progression. Click nodes to inject specific prompts.</p>
+    <PageTransition className="p-0 h-full">
+      <div className="w-full h-full flex relative">
+        <NodePalette onGenerateClick={() => setShowGenerateModal(true)} />
+
+        <div className="flex-1 flex flex-col h-full">
+          <div className="flex-1 flex overflow-hidden">
+            <div className="flex-1 relative" ref={reactFlowWrapper}>
+              <ReactFlow
+                nodes={nodes}
+                edges={edges}
+                onNodesChange={onNodesChange}
+                onEdgesChange={onEdgesChange}
+                onConnect={onConnect}
+                onNodeClick={onNodeClick}
+                onInit={setReactFlowInstance}
+                onDragOver={onDragOver}
+                onDrop={onDrop}
+                nodeTypes={nodeTypes}
+                fitView
+                className="bg-background"
+                deleteKeyCode={['Backspace', 'Delete']}
+              >
+                <Background color="#3f3f46" gap={24} size={2} />
+                <Controls className="bg-surfaceHighlight fill-textMain border-gray-800 rounded-lg overflow-hidden shadow-xl" />
+              </ReactFlow>
             </div>
-            <Button onClick={generateLink} variant="primary" size="md">
-              <Link2 size={20} />
-              <span className="hidden md:inline">Generate Link</span>
-            </Button>
+
+            <AnimatePresence>
+              {selectedNode && !showCompanyConfig && !showInterviewerConfig && (
+                <NodeConfigPanel
+                  node={selectedNode}
+                  onUpdate={updateNodeData}
+                  onDelete={deleteNode}
+                  onClose={() => setSelectedNode(null)}
+                />
+              )}
+              {showCompanyConfig && (
+                <CompanyConfigPanel
+                  companyInfo={companyInfo}
+                  onChange={setCompanyInfo}
+                  onClose={() => setShowCompanyConfig(false)}
+                />
+              )}
+              {showInterviewerConfig && (
+                <InterviewerConfigPanel
+                  config={interviewerConfig}
+                  onChange={setInterviewerConfig}
+                  onClose={() => setShowInterviewerConfig(false)}
+                />
+              )}
+            </AnimatePresence>
           </div>
-          
-          <Card className="flex-1 p-0 !border-gray-800">
-            <ReactFlow
-              nodes={nodes}
-              edges={edges}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              onConnect={onConnect}
-              onNodeClick={onNodeClick}
-              nodeTypes={nodeTypes}
-              fitView
-              className="bg-background"
-            >
-              <Background color="#3f3f46" gap={24} size={2} />
-              <Controls className="bg-surfaceHighlight fill-textMain border-gray-800 rounded-lg overflow-hidden shadow-xl" />
-            </ReactFlow>
-          </Card>
         </div>
 
-        <AnimatePresence>
-          {selectedNode && (
-            <motion.div 
-              initial={{ opacity: 0, x: 50 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 50 }}
-              transition={{ type: "spring", stiffness: 300, damping: 30 }}
-              className="w-full md:w-96 shrink-0 h-full max-h-[600px] overflow-y-auto"
-            >
-              <Card className="h-full flex flex-col !p-0">
-                <div className="p-6 border-b border-gray-800 flex justify-between items-center bg-surface">
-                  <h3 className="text-lg font-bold text-white">Stage Configuration</h3>
-                  <button onClick={() => setSelectedNode(null)} className="text-textMuted hover:text-white transition-colors bg-background p-2 rounded-full">
-                    <X size={18} />
-                  </button>
-                </div>
-                <div className="p-6 space-y-6 flex-1 bg-surfaceHighlight/50">
-                  <div>
-                    <label className="block text-sm font-semibold text-textMuted mb-2">Stage Name</label>
-                    <input
-                      type="text"
-                      value={selectedNode.data.label}
-                      onChange={(e) => updateNodeData(selectedNode.id, e.target.value, selectedNode.data.description)}
-                      className="w-full bg-background border border-gray-700 text-white rounded-xl px-4 py-3 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-all shadow-inner"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-textMuted mb-2">System Instructions</label>
-                    <textarea
-                      value={selectedNode.data.description}
-                      onChange={(e) => updateNodeData(selectedNode.id, selectedNode.data.label, e.target.value)}
-                      className="w-full bg-background border border-gray-700 text-white rounded-xl px-4 py-3 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-all min-h-[200px] resize-none shadow-inner"
-                      placeholder="e.g. Focus on system design principles..."
-                    />
-                  </div>
-                </div>
-              </Card>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        <GenerateFlowModal
+          isOpen={showGenerateModal}
+          onClose={() => setShowGenerateModal(false)}
+          onGenerate={handleAIGenerate}
+        />
       </div>
     </PageTransition>
   );

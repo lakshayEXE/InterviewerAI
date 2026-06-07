@@ -1,16 +1,18 @@
 @import "tailwindcss";
 @config "../tailwind.config.js";
 
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
 
 body {
-  background-color: #0a0a0c;
-  color: #f8fafc;
-  font-family: 'Inter', system-ui, sans-serif;
+  background-color: #141413;
+  color: #faf9f5;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
   overflow: hidden;
   margin: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Custom Scrollbar for premium feel */
 ::-webkit-scrollbar {
   width: 6px;
 }
@@ -18,15 +20,37 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #222226;
+  background: #252320;
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #38bdf8;
+  background: #cc785c;
+}
+
+.font-serif {
+  font-family: 'Fraunces', Georgia, serif;
 }
 
 .glass-panel {
-  background: rgba(21, 21, 24, 0.7);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(29, 27, 24, 0.8);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(250, 249, 245, 0.08);
+}
+
+.bg-warm-radial {
+  background: radial-gradient(ellipse 70% 50% at 50% -10%, rgba(204, 120, 92, 0.12), transparent 70%);
+}
+
+.bg-warm-grain {
+  background-image: radial-gradient(rgba(250, 249, 245, 0.02) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+.text-serif {
+  font-family: 'Fraunces', Georgia, serif;
+  letter-spacing: -0.02em;
+}
+
+.clay-glow {
+  box-shadow: 0 0 0 1px rgba(204, 120, 92, 0.15), 0 8px 30px rgba(204, 120, 92, 0.08);
 }
