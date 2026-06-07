@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Mic, User } from 'lucide-react';
+import { Mic, User, Video, VideoOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { PageTransition } from '../components/ui/PageTransition';
 import { Card } from '../components/ui/Card';
@@ -13,19 +13,26 @@ export const WaitingRoom: React.FC = () => {
   const [candidateName, setCandidateName] = useState('');
   const [micVolume, setMicVolume] = useState(0);
   const [hasMicPermission, setHasMicPermission] = useState(false);
+  const [hasCameraPermission, setHasCameraPermission] = useState(false);
   
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
     let animationFrame: number;
 
     const initMic = async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: { facingMode: 'user' } });
         streamRef.current = stream;
         setHasMicPermission(true);
+        setHasCameraPermission(stream.getVideoTracks().length > 0);
+
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
 
         const ctx = new window.AudioContext();
         audioContextRef.current = ctx;
@@ -47,7 +54,7 @@ export const WaitingRoom: React.FC = () => {
         updateVolume();
 
       } catch (err) {
-        toast.error("Microphone permission denied. Please allow it to proceed.");
+        toast.error("Camera & microphone permission denied. Please allow them to proceed.");
         console.error(err);
       }
     };
@@ -72,6 +79,10 @@ export const WaitingRoom: React.FC = () => {
     }
     if (!hasMicPermission) {
       toast.error('Microphone permission required');
+      return;
+    }
+    if (!hasCameraPermission) {
+      toast.error('Camera permission required for this interview');
       return;
     }
     navigate(`/session/${sessionData}`, { state: { candidateName } });
@@ -101,6 +112,30 @@ export const WaitingRoom: React.FC = () => {
         </div>
 
         <div className="space-y-6">
+          <div className="bg-background p-3 rounded-2xl border border-gray-800 shadow-inner">
+            <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-black/40">
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="w-full h-full object-cover -scale-x-100"
+              />
+              {!hasCameraPermission && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-textMuted">
+                  <VideoOff size={28} />
+                  <span className="text-xs">Waiting for camera...</span>
+                </div>
+              )}
+              <span className={`absolute top-2 right-2 text-[10px] font-bold px-2 py-1 rounded-md flex items-center gap-1 ${hasCameraPermission ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
+                <Video size={11} /> {hasCameraPermission ? 'Camera on' : 'Off'}
+              </span>
+            </div>
+            <p className="text-[11px] text-textMuted mt-2 px-1 leading-relaxed">
+              This interview is proctored. Your camera stays on for the session to monitor for academic integrity.
+            </p>
+          </div>
+
           <div className="bg-background p-5 rounded-2xl border border-gray-800 shadow-inner">
             <div className="flex justify-between items-center mb-4">
               <span className="text-sm font-semibold text-textMain flex items-center gap-2">
@@ -139,7 +174,7 @@ export const WaitingRoom: React.FC = () => {
           variant="primary"
           size="lg"
           onClick={handleStart}
-          disabled={!hasMicPermission || !candidateName.trim()}
+          disabled={!hasMicPermission || !hasCameraPermission || !candidateName.trim()}
           className="w-full shadow-primary/30"
         >
           Enter Waiting Room

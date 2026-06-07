@@ -8,6 +8,11 @@ export class AudioRecorder {
 
   constructor(onData: (base64Data: string) => void) {
     this.onDataCallback = onData;
+    try {
+      this.audioContext = new window.AudioContext();
+    } catch {
+      this.audioContext = null;
+    }
   }
 
   async start() {
@@ -15,13 +20,21 @@ export class AudioRecorder {
       this.mediaStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           channelCount: 1,
-          sampleRate: 16000,
+          echoCancellation: true,
+          noiseSuppression: true
         }
       });
 
-      this.audioContext = new window.AudioContext({ sampleRate: 16000 });
+      if (!this.audioContext) {
+        this.audioContext = new window.AudioContext();
+      }
+
+      if (this.audioContext.state === 'suspended') {
+        await this.audioContext.resume();
+      }
+
       this.source = this.audioContext.createMediaStreamSource(this.mediaStream);
-      this.processor = this.audioContext.createScriptProcessor(2048, 1, 1);
+      this.processor = this.audioContext.createScriptProcessor(4096, 1, 1);
       this.analyser = this.audioContext.createAnalyser();
       this.analyser.fftSize = 256;
 
@@ -29,9 +42,12 @@ export class AudioRecorder {
       this.analyser.connect(this.processor);
       this.processor.connect(this.audioContext.destination);
 
+      const inputSampleRate = this.audioContext.sampleRate;
+
       this.processor.onaudioprocess = (e) => {
         const inputData = e.inputBuffer.getChannelData(0);
-        const pcm16Data = this.float32ToInt16(inputData);
+        const downsampled = this.downsampleBuffer(inputData, inputSampleRate, 16000);
+        const pcm16Data = this.float32ToInt16(downsampled);
         const base64Data = this.arrayBufferToBase64(pcm16Data.buffer as ArrayBuffer);
         this.onDataCallback(base64Data);
       };
@@ -39,6 +55,27 @@ export class AudioRecorder {
       console.error("Error starting AudioRecorder:", error);
       throw error;
     }
+  }
+
+  private downsampleBuffer(buffer: Float32Array, inputRate: number, outputRate: number): Float32Array {
+    if (inputRate === outputRate) return buffer;
+    const sampleRateRatio = inputRate / outputRate;
+    const newLength = Math.round(buffer.length / sampleRateRatio);
+    const result = new Float32Array(newLength);
+    let offsetResult = 0;
+    let offsetBuffer = 0;
+    while (offsetResult < result.length) {
+      const nextOffsetBuffer = Math.round((offsetResult + 1) * sampleRateRatio);
+      let accum = 0, count = 0;
+      for (let i = offsetBuffer; i < nextOffsetBuffer && i < buffer.length; i++) {
+        accum += buffer[i];
+        count++;
+      }
+      result[offsetResult] = accum / count;
+      offsetResult++;
+      offsetBuffer = nextOffsetBuffer;
+    }
+    return result;
   }
 
   stop() {

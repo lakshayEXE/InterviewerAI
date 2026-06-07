@@ -1,24 +1,9 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Network, Mic2, KeyRound } from 'lucide-react';
+import { ArrowRight, Network } from 'lucide-react';
 import { useInterviewStore } from '../store/useInterviewStore';
 import { PageTransition } from '../components/ui/PageTransition';
-import { Card } from '../components/ui/Card';
 import { motion } from 'framer-motion';
-import type { Variants } from 'framer-motion';
-
-const containerVariants: Variants = {
-  hidden: { opacity: 0 },
-  show: {
-    opacity: 1,
-    transition: { staggerChildren: 0.1 }
-  }
-};
-
-const itemVariants: Variants = {
-  hidden: { opacity: 0, y: 20 },
-  show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } }
-};
 
 export const Dashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -27,73 +12,91 @@ export const Dashboard: React.FC = () => {
 
   return (
     <PageTransition>
-      <div className="p-8 h-full flex flex-col items-center justify-center gap-10">
-        <motion.div 
-          initial={{ opacity: 0, y: -20, filter: 'blur(10px)' }}
-          animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-          transition={{ duration: 0.7, ease: "easeOut" }}
-          className="text-center max-w-2xl"
-        >
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 text-primary text-sm font-semibold mb-6 border border-primary/20">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
-            </span>
-            Gemini Live Native
-          </div>
-          <h1 className="text-5xl md:text-6xl font-extrabold tracking-tight text-white mb-6">
-            AI Voice <span className="bg-gradient-to-r from-accent to-primary bg-clip-text text-transparent">Interviewer</span>
-          </h1>
-          <p className="text-lg text-textMuted mb-8 leading-relaxed">
-            Architect custom behavioral and technical interview pipelines visually. Launch low-latency multimodal voice sessions instantly.
-          </p>
-        </motion.div>
+      <div className="relative h-full flex flex-col items-center justify-center overflow-hidden px-6">
+        {/* Restrained warm background */}
+        <div className="absolute inset-0 bg-warm-grain opacity-50" />
+        <div className="absolute inset-0 bg-warm-radial" />
 
-        <motion.div 
-          variants={containerVariants}
-          initial="hidden"
-          animate="show"
-          className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-4xl"
-        >
-          <motion.div variants={itemVariants}>
-            <Card hoverEffect className="cursor-pointer group" onClick={() => navigate('/flow')}>
-              <div className="flex flex-col gap-6">
-                <div className="w-14 h-14 rounded-2xl bg-surface flex items-center justify-center text-accent group-hover:bg-accent/10 transition-colors">
-                  <Network size={28} />
-                </div>
-                <div>
-                  <h2 className="text-2xl font-bold text-textMain mb-2">Flow Builder</h2>
-                  <p className="text-textMuted leading-relaxed">Design your interview stages. You currently have <strong className="text-accent">{nodes.length}</strong> active stages configured.</p>
-                </div>
-              </div>
-            </Card>
-          </motion.div>
-
-          <motion.div variants={itemVariants}>
-            <Card hoverEffect className="cursor-pointer group" onClick={() => navigate('/session')}>
-              <div className="flex flex-col gap-6">
-                <div className="w-14 h-14 rounded-2xl bg-surface flex items-center justify-center text-primary group-hover:bg-primary/10 transition-colors">
-                  <Mic2 size={28} />
-                </div>
-                <div>
-                  <h2 className="text-2xl font-bold text-textMain mb-2">Live Session</h2>
-                  <p className="text-textMuted leading-relaxed">Start the real-time AI interview based on your visual flow configuration.</p>
-                </div>
-              </div>
-            </Card>
-          </motion.div>
-        </motion.div>
-
-        {!apiKey && (
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="mt-4 flex items-center gap-3 px-6 py-4 bg-red-500/10 border border-red-500/30 text-red-400 rounded-2xl shadow-[0_0_20px_rgba(239,68,68,0.1)]"
+        <div className="relative z-10 w-full max-w-3xl mx-auto text-center">
+          {/* Eyebrow */}
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+            className="inline-flex items-center gap-2 mb-8"
           >
-            <KeyRound size={20} />
-            <span className="font-medium">API Key missing. Please configure it in the sidebar settings to begin.</span>
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
+              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-primary" />
+            </span>
+            <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-textMuted">
+              Powered by Gemini Live
+            </span>
           </motion.div>
-        )}
+
+          {/* Serif headline */}
+          <motion.h1
+            initial={{ opacity: 0, y: 20, filter: 'blur(8px)' }}
+            animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+            transition={{ duration: 0.7, ease: [0.25, 0.46, 0.45, 0.94] }}
+            className="text-serif text-5xl md:text-7xl font-light text-textMain leading-[1.05] mb-6"
+          >
+            Interviews,
+            <br />
+            conducted by <span className="italic text-primary">AI</span>.
+          </motion.h1>
+
+          {/* Subtitle */}
+          <motion.p
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.2 }}
+            className="text-lg text-textMuted max-w-xl mx-auto leading-relaxed mb-10 font-light"
+          >
+            Design intelligent interview flows and launch real-time voice sessions.
+            Rigorous, autonomous technical interviews, built visually.
+          </motion.p>
+
+          {/* CTAs */}
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.35 }}
+            className="flex flex-col sm:flex-row items-center justify-center gap-3"
+          >
+            <button
+              onClick={() => navigate('/flow')}
+              className="group inline-flex items-center justify-center gap-2 px-6 py-3 rounded-full bg-primary hover:bg-primaryDim text-white font-medium text-sm transition-all duration-200 shadow-[0_4px_20px_rgba(204,120,92,0.25)] hover:shadow-[0_4px_28px_rgba(204,120,92,0.4)] w-full sm:w-auto"
+            >
+              Build a flow
+              <ArrowRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
+            </button>
+            <button
+              onClick={() => navigate('/session')}
+              className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-full bg-white/[0.04] hover:bg-white/[0.08] text-textMain font-medium text-sm border border-white/[0.08] hover:border-white/[0.15] transition-all duration-200 w-full sm:w-auto"
+            >
+              Start a session
+            </button>
+          </motion.div>
+
+          {/* Slim stat row */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.6, delay: 0.5 }}
+            className="mt-14 flex items-center justify-center gap-8 text-sm"
+          >
+            <div className="flex items-center gap-2 text-textMuted">
+              <Network size={15} className="text-textDim" />
+              <span><strong className="text-textMain font-semibold">{nodes.length}</strong> stages configured</span>
+            </div>
+            <div className="w-px h-4 bg-white/10" />
+            <div className="flex items-center gap-2 text-textMuted">
+              <span className={`w-1.5 h-1.5 rounded-full ${apiKey ? 'bg-emerald-400' : 'bg-red-400'}`} />
+              <span>{apiKey ? 'API connected' : 'API key missing'}</span>
+            </div>
+          </motion.div>
+        </div>
       </div>
     </PageTransition>
   );

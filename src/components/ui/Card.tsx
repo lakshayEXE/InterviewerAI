@@ -13,16 +13,14 @@ export const Card = React.forwardRef<HTMLDivElement, CardProps>(
     return (
       <motion.div
         ref={ref}
-        whileHover={hoverEffect ? { y: -5, transition: { duration: 0.2 } } : undefined}
+        whileHover={hoverEffect ? { y: -4, transition: { duration: 0.2 } } : undefined}
         className={cn(
-          "bg-surfaceHighlight rounded-3xl border border-gray-800 shadow-2xl overflow-hidden glass-panel relative",
-          hoverEffect && "hover:border-accent hover:shadow-[0_10px_40px_rgba(56,189,248,0.15)] transition-colors duration-300",
+          "rounded-2xl border border-white/[0.06] bg-surface/60 backdrop-blur-md shadow-xl overflow-hidden relative",
+          hoverEffect && "hover:border-primary/25 hover:shadow-[0_8px_40px_rgba(204,120,92,0.1)] transition-all duration-300",
           className
         )}
         {...props}
       >
-        {/* Subtle top inner glare for premium feel */}
-        <div className="absolute inset-0 rounded-3xl pointer-events-none border border-white/5 shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]" />
         <div className="relative z-10 w-full h-full p-6">
           {children}
         </div>
