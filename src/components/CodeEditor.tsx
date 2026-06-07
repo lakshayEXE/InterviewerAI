@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import Editor from '@monaco-editor/react';
+import Editor, { type OnMount } from '@monaco-editor/react';
 import { Code2 } from 'lucide-react';
 
 interface CodeEditorProps {
   onCodeChange: (code: string, language: string) => void;
+  onPaste?: (length: number) => void;
   defaultValue?: string;
 }
 
@@ -19,10 +20,18 @@ const SUPPORTED_LANGUAGES = [
 
 export const CodeEditor: React.FC<CodeEditorProps> = ({ 
   onCodeChange, 
+  onPaste,
   defaultValue = "// Write your solution here...\n\n"
 }) => {
   const [code, setCode] = useState(defaultValue);
   const [language, setLanguage] = useState('javascript');
+
+  const handleMount: OnMount = (editor) => {
+    editor.onDidPaste((e) => {
+      const pasted = editor.getModel()?.getValueInRange(e.range) ?? '';
+      if (pasted) onPaste?.(pasted.length);
+    });
+  };
 
   // Debounce logic: Only send code to API after 2 seconds of inactivity
   useEffect(() => {
@@ -65,6 +74,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
           theme="vs-dark"
           value={code}
           onChange={(value) => setCode(value || "")}
+          onMount={handleMount}
           options={{
             minimap: { enabled: false },
             fontSize: 14,

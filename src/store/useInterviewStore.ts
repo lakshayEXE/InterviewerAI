@@ -5,6 +5,7 @@ import type { TranscriptItem } from '../components/TranscriptSidebar';
 import type { CompanyInfo, InterviewerConfig } from '../types/flow';
 import { DEFAULT_COMPANY_INFO, DEFAULT_INTERVIEWER_CONFIG } from '../types/flow';
 import type { EvaluationResult } from '../types/evaluation';
+import type { ProctorEvent } from '../types/proctor';
 
 export interface FlowNavActions {
   onCompanyInfo: () => void;
@@ -32,6 +33,9 @@ export interface InterviewStore {
   setSessionNodes: (nodes: Node[]) => void;
   evaluation: EvaluationResult | null;
   setEvaluation: (evaluation: EvaluationResult | null) => void;
+  proctorEvents: ProctorEvent[];
+  addProctorEvent: (event: ProctorEvent) => void;
+  clearProctorEvents: () => void;
   isSessionActive: boolean;
   setSessionActive: (active: boolean) => void;
   flowNavActions: FlowNavActions | null;
@@ -71,6 +75,9 @@ export const useInterviewStore = create<InterviewStore>()(
       setSessionNodes: (nodes) => set({ sessionNodes: nodes }),
       evaluation: null,
       setEvaluation: (evaluation) => set({ evaluation }),
+      proctorEvents: [],
+      addProctorEvent: (event) => set((state) => ({ proctorEvents: [...state.proctorEvents, event] })),
+      clearProctorEvents: () => set({ proctorEvents: [] }),
       isSessionActive: false,
       setSessionActive: (active) => set({ isSessionActive: active }),
       flowNavActions: null,
@@ -87,6 +94,7 @@ export const useInterviewStore = create<InterviewStore>()(
         interviewerConfig: state.interviewerConfig,
         sessionNodes: state.sessionNodes,
         evaluation: state.evaluation,
+        proctorEvents: state.proctorEvents,
       }),
     }
   )

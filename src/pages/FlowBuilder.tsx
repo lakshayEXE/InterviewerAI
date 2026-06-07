@@ -21,7 +21,8 @@ import { GenerateFlowModal } from '../components/flow/GenerateFlowModal';
 import { generateFlowFromJD } from '../services/FlowGeneratorService';
 import { encodeSessionPayload } from '../utils/sessionPayload';
 import { NODE_CATEGORIES } from '../types/flow';
-import type { FlowNodeData } from '../types/flow';
+import type { FlowNodeData, NodeCategory } from '../types/flow';
+import { Workflow } from 'lucide-react';
 
 const nodeTypes = { custom: CustomFlowNode };
 
@@ -93,13 +94,38 @@ export const FlowBuilder: React.FC = () => {
     e.dataTransfer.dropEffect = 'move';
   }, []);
 
-  const onDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    const category = e.dataTransfer.getData('application/reactflow-category');
-    if (!category) return;
-
+  const addStage = useCallback((category: NodeCategory, position?: { x: number; y: number }) => {
     const meta = NODE_CATEGORIES.find(c => c.category === category);
     if (!meta) return;
+
+    const pos = position ?? { x: 250, y: 80 + nodes.length * 130 };
+
+    const newNode: Node = {
+      id: `node_${Date.now()}`,
+      type: 'custom',
+      position: pos,
+      data: { ...meta.defaultData },
+    };
+
+    setNodes(nds => [...nds, newNode]);
+
+    // Auto-connect to the last node
+    if (nodes.length > 0) {
+      const lastNode = nodes[nodes.length - 1];
+      setEdges(eds => [...eds, {
+        id: `e_${lastNode.id}-${newNode.id}`,
+        source: lastNode.id,
+        target: newNode.id,
+        animated: true,
+        style: { stroke: '#38bdf8' },
+      }]);
+    }
+  }, [nodes, setNodes, setEdges]);
+
+  const onDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    const category = e.dataTransfer.getData('application/reactflow-category') as NodeCategory;
+    if (!category) return;
 
     const bounds = reactFlowWrapper.current?.getBoundingClientRect();
     if (!bounds || !reactFlowInstance) return;
@@ -109,28 +135,8 @@ export const FlowBuilder: React.FC = () => {
       y: e.clientY - bounds.top,
     });
 
-    const newNode: Node = {
-      id: `node_${Date.now()}`,
-      type: 'custom',
-      position,
-      data: { ...meta.defaultData },
-    };
-
-    setNodes(nds => [...nds, newNode]);
-
-    // Auto-connect to the last node
-    const currentNodes = nodes;
-    if (currentNodes.length > 0) {
-      const lastNode = currentNodes[currentNodes.length - 1];
-      setEdges(eds => [...eds, {
-        id: `e_${lastNode.id}-${newNode.id}`,
-        source: lastNode.id,
-        target: newNode.id,
-        animated: true,
-        style: { stroke: '#38bdf8' },
-      }]);
-    }
-  }, [reactFlowInstance, nodes, setNodes, setEdges]);
+    addStage(category, position);
+  }, [reactFlowInstance, addStage]);
 
   const generateLink = useCallback(() => {
     const state = useInterviewStore.getState();
@@ -192,7 +198,11 @@ export const FlowBuilder: React.FC = () => {
   return (
     <PageTransition className="p-0 h-full">
       <div className="w-full h-full flex relative">
-        <NodePalette onGenerateClick={() => setShowGenerateModal(true)} />
+        <NodePalette
+          onGenerateClick={() => setShowGenerateModal(true)}
+          onAddStage={(category) => addStage(category)}
+          stageCount={nodes.length}
+        />
 
         <div className="flex-1 flex flex-col h-full">
           <div className="flex-1 flex overflow-hidden">
@@ -215,6 +225,20 @@ export const FlowBuilder: React.FC = () => {
                 <Background color="#3f3f46" gap={24} size={2} />
                 <Controls className="bg-surfaceHighlight fill-textMain border-gray-800 rounded-lg overflow-hidden shadow-xl" />
               </ReactFlow>
+
+              {nodes.length === 0 && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 pointer-events-none px-6 text-center">
+                  <div className="w-16 h-16 rounded-2xl bg-surface/60 border border-white/[0.06] flex items-center justify-center text-textMuted">
+                    <Workflow size={30} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-white">Your interview flow is empty</h3>
+                    <p className="text-sm text-textMuted mt-1 max-w-xs">
+                      Drag a stage from the left, click one to add it, or generate a full flow with AI.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
 
             <AnimatePresence>

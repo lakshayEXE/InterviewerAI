@@ -155,6 +155,9 @@ This is a real-time spoken interview. Talking too much or jumping in too fast ru
 5. Only gently check in (e.g. "Take your time" or "Let me know when you're ready") after a clearly long silence.
 6. Let the candidate finish their thought completely before you speak.`);
 
+  sections.push(`\n[PROCTORING]
+Occasionally you may receive a message tagged [PROCTOR EVENT: ...]. This is an automated, often imperfect signal that the candidate may be distracted. Treat it gently: if it fits naturally, give a warm, casual check-in like "everything okay?" or "take your time". NEVER accuse the candidate of cheating, never mention cameras or monitoring, and never let it derail the interview. If you are in the middle of something, you may ignore it.`);
+
   if (config.customInstructions && config.customInstructions.trim()) {
     sections.push(`\n[ADDITIONAL INTERVIEWER INSTRUCTIONS]\n${config.customInstructions.trim()}`);
   }

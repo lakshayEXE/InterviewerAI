@@ -166,6 +166,7 @@ export interface NodeCategoryMeta {
   category: NodeCategory;
   label: string;
   icon: string;
+  shortDesc?: string;
   color: string;
   group: 'start-end' | 'technical' | 'soft-skills' | 'other';
   defaultData: FlowNodeData;
@@ -176,6 +177,7 @@ export const NODE_CATEGORIES: NodeCategoryMeta[] = [
     category: 'greeting',
     label: 'Greeting',
     icon: '👋',
+    shortDesc: 'Warm intro and ice breakers',
     color: '#4ade80',
     group: 'start-end',
     defaultData: {
@@ -190,6 +192,7 @@ export const NODE_CATEGORIES: NodeCategoryMeta[] = [
     category: 'fundamentals',
     label: 'Fundamentals',
     icon: '📚',
+    shortDesc: 'Probe core CS knowledge',
     color: '#60a5fa',
     group: 'technical',
     defaultData: {
@@ -204,6 +207,7 @@ export const NODE_CATEGORIES: NodeCategoryMeta[] = [
     category: 'dsa',
     label: 'DSA',
     icon: '🧩',
+    shortDesc: 'Data structures and algorithms',
     color: '#f472b6',
     group: 'technical',
     defaultData: {
@@ -219,6 +223,7 @@ export const NODE_CATEGORIES: NodeCategoryMeta[] = [
     category: 'coding',
     label: 'Live Coding',
     icon: '💻',
+    shortDesc: 'Hands-on coding challenge',
     color: '#a78bfa',
     group: 'technical',
     defaultData: {
@@ -233,6 +238,7 @@ export const NODE_CATEGORIES: NodeCategoryMeta[] = [
     category: 'system-design',
     label: 'System Design',
     icon: '🏗️',
+    shortDesc: 'Architecture and design discussion',
     color: '#fb923c',
     group: 'technical',
     defaultData: {
@@ -247,6 +253,7 @@ export const NODE_CATEGORIES: NodeCategoryMeta[] = [
     category: 'behavioral',
     label: 'Behavioral',
     icon: '🤝',
+    shortDesc: 'Culture fit and past experience',
     color: '#facc15',
     group: 'soft-skills',
     defaultData: {
@@ -260,6 +267,7 @@ export const NODE_CATEGORIES: NodeCategoryMeta[] = [
     category: 'custom',
     label: 'Custom Stage',
     icon: '✏️',
+    shortDesc: 'Your own freeform stage',
     color: '#94a3b8',
     group: 'other',
     defaultData: {
@@ -273,6 +281,7 @@ export const NODE_CATEGORIES: NodeCategoryMeta[] = [
     category: 'wrapup',
     label: 'Wrap-up',
     icon: '🎬',
+    shortDesc: 'Closing and candidate Q&A',
     color: '#2dd4bf',
     group: 'start-end',
     defaultData: {

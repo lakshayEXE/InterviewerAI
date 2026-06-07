@@ -8,10 +8,19 @@ import { CodeEditor } from '../components/CodeEditor';
 import { AudioRecorder } from '../services/AudioRecorder';
 import { AudioPlayer } from '../services/AudioPlayer';
 import { GeminiLiveService } from '../services/GeminiLiveService';
+import { FaceProctor } from '../services/FaceProctor';
+import { confirmFrame } from '../services/ProctorVisionService';
 import { useInterviewStore } from '../store/useInterviewStore';
 import { buildSystemPrompt } from '../utils/promptBuilder';
 import { decodeSessionPayload } from '../utils/sessionPayload';
 import type { Node } from 'reactflow';
+import type { ProctorEventType, ProctorSource } from '../types/proctor';
+import { PROCTOR_EVENT_META } from '../types/proctor';
+
+const NUDGE_PHRASE: Partial<Record<ProctorEventType, string>> = {
+  'looking-away': 'the candidate appeared to look away from the screen for several seconds',
+  'no-face': 'the candidate may have stepped away from the camera',
+};
 import { PageTransition } from '../components/ui/PageTransition';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -34,6 +43,8 @@ export const Interviewer: React.FC = () => {
   const setSessionActive = useInterviewStore(state => state.setSessionActive);
   const setEvaluation = useInterviewStore(state => state.setEvaluation);
   const setSessionNodes = useInterviewStore(state => state.setSessionNodes);
+  const addProctorEvent = useInterviewStore(state => state.addProctorEvent);
+  const clearProctorEvents = useInterviewStore(state => state.clearProctorEvents);
 
   const [isConnected, setIsConnected] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -42,11 +53,16 @@ export const Interviewer: React.FC = () => {
 
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showCodeEditor, setShowCodeEditor] = useState(false);
-  const [strikes, setStrikes] = useState<string[]>([]);
+  const [alerts, setAlerts] = useState<{ id: string; label: string; severity: string }[]>([]);
 
   const audioRecorderRef = useRef<AudioRecorder | null>(null);
   const audioPlayerRef = useRef<AudioPlayer | null>(null);
   const geminiServiceRef = useRef<GeminiLiveService | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
+  const faceProctorRef = useRef<FaceProctor | null>(null);
+  const lastNudgeRef = useRef<number>(0);
+  const lastEscalationRef = useRef<number>(0);
 
   const session = React.useMemo(() => {
     if (sessionData) {
@@ -64,6 +80,116 @@ export const Interviewer: React.FC = () => {
 
   const activeNodes: Node[] = session.nodes;
 
+  const pid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+  const captureFrame = (): string | null => {
+    const video = videoRef.current;
+    if (!video || video.videoWidth === 0) return null;
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.drawImage(video, 0, 0);
+    return canvas.toDataURL('image/jpeg', 0.6).split(',')[1] || null;
+  };
+
+  const reportProctorEvent = React.useCallback((type: ProctorEventType, source: ProctorSource) => {
+    const meta = PROCTOR_EVENT_META[type];
+    const id = pid();
+
+    addProctorEvent({
+      id,
+      type,
+      severity: meta.severity,
+      source,
+      message: meta.label,
+      timestamp: Date.now(),
+    });
+
+    // Transient on-screen banner
+    setAlerts(prev => [...prev, { id, label: meta.label, severity: meta.severity }]);
+    setTimeout(() => setAlerts(prev => prev.filter(a => a.id !== id)), 4000);
+
+    // Casual, rate-limited verbal check-in for soft/ambiguous events
+    if (meta.soft) {
+      const now = Date.now();
+      if (now - lastNudgeRef.current > 30000) {
+        lastNudgeRef.current = now;
+        geminiServiceRef.current?.sendProctorNudge(NUDGE_PHRASE[type] ?? 'the candidate may be distracted');
+      }
+    }
+
+    // Cost-controlled Gemini snapshot confirmation for ML-flagged events
+    if (source === 'ml' && (meta.severity === 'medium' || meta.severity === 'high')) {
+      const now = Date.now();
+      if (now - lastEscalationRef.current > 25000) {
+        lastEscalationRef.current = now;
+        const key = useInterviewStore.getState().apiKey;
+        const jpeg = captureFrame();
+        if (key && jpeg) {
+          confirmFrame(key, jpeg, type).then(({ confirmed, note }) => {
+            if (confirmed) {
+              addProctorEvent({
+                id: pid(),
+                type,
+                severity: meta.severity,
+                source: 'gemini',
+                message: note || `Confirmed: ${meta.label}`,
+                timestamp: Date.now(),
+                confirmed: true,
+              });
+            }
+          });
+        }
+      }
+    }
+  }, [addProctorEvent]);
+
+  const startProctoring = async () => {
+    // Camera is best-effort: if it fails, the session still runs with behavioral signals only.
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+      cameraStreamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play().catch(() => {});
+      }
+
+      faceProctorRef.current = new FaceProctor();
+      faceProctorRef.current.onEvent = (type) => reportProctorEvent(type, 'ml');
+      faceProctorRef.current.onError = () => {
+        toast('Face monitoring unavailable on this device', { icon: '⚠️' });
+      };
+      if (videoRef.current) {
+        faceProctorRef.current.start(videoRef.current);
+      }
+    } catch {
+      toast('Camera off — proctoring will use activity signals only', { icon: '📷' });
+    }
+
+    // Multi-monitor check (Window Management API, where supported)
+    try {
+      const screenApi = window as unknown as { getScreenDetails?: () => Promise<{ screens?: unknown[] }> };
+      if (screenApi.getScreenDetails) {
+        const details = await screenApi.getScreenDetails();
+        if ((details?.screens?.length ?? 0) > 1) reportProctorEvent('multi-monitor', 'behavioral');
+      }
+    } catch {
+      // permission denied / unsupported — ignore
+    }
+  };
+
+  const stopProctoring = () => {
+    faceProctorRef.current?.stop();
+    faceProctorRef.current = null;
+    if (cameraStreamRef.current) {
+      cameraStreamRef.current.getTracks().forEach(t => t.stop());
+      cameraStreamRef.current = null;
+    }
+    if (videoRef.current) videoRef.current.srcObject = null;
+  };
+
   // Track fullscreen state
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -71,29 +197,30 @@ export const Interviewer: React.FC = () => {
       setIsFullscreen(inFullscreen);
 
       if (!inFullscreen && isRecording) {
-        setStrikes(prev => [...prev, `Exited fullscreen at ${new Date().toLocaleTimeString()}`]);
-        toast.error("Anti-Cheat: Fullscreen Exited!");
+        reportProctorEvent('fullscreen-exit', 'behavioral');
       }
     };
 
     document.addEventListener("fullscreenchange", handleFullscreenChange);
     return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
-  }, [isRecording]);
+  }, [isRecording, reportProctorEvent]);
 
-  // Anti-Cheat: tab visibility
+  // Anti-Cheat: tab visibility + window focus
   useEffect(() => {
     if (!isRecording) return;
 
     const handleVisibilityChange = () => {
-      if (document.hidden) {
-        setStrikes(prev => [...prev, `Tab switched away at ${new Date().toLocaleTimeString()}`]);
-        toast.error("Anti-Cheat: Tab Switching Detected!");
-      }
+      if (document.hidden) reportProctorEvent('tab-hidden', 'behavioral');
     };
+    const handleBlur = () => reportProctorEvent('window-blur', 'behavioral');
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, [isRecording]);
+    window.addEventListener("blur", handleBlur);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("blur", handleBlur);
+    };
+  }, [isRecording, reportProctorEvent]);
 
   const enterFullscreen = async () => {
     try {
@@ -143,6 +270,7 @@ export const Interviewer: React.FC = () => {
       audioRecorderRef.current?.stop();
       audioPlayerRef.current?.stop();
       geminiServiceRef.current?.disconnect();
+      stopProctoring();
       setSessionActive(false);
     };
   }, [apiKey]);
@@ -187,11 +315,14 @@ export const Interviewer: React.FC = () => {
       const systemPrompt = buildSystemPrompt(activeNodes, candidateName, session.companyInfo, session.config);
       clearTranscript();
       setEvaluation(null);
+      clearProctorEvents();
       setSessionNodes(activeNodes);
       geminiServiceRef.current.connect(systemPrompt, {
         voiceName: session.config.voiceName,
         languageCode: session.config.languageCode,
       });
+
+      startProctoring();
 
     } catch (err) {
       toast.error("Microphone Denied or failed to start call.");
@@ -208,6 +339,7 @@ export const Interviewer: React.FC = () => {
       audioRecorderRef.current?.stop();
       audioPlayerRef.current?.stop();
       geminiServiceRef.current?.disconnect();
+      stopProctoring();
       setIsRecording(false);
       toast('Call ended', { icon: '📞' });
     }
@@ -226,6 +358,11 @@ export const Interviewer: React.FC = () => {
   const handleCodeChange = React.useCallback((code: string, lang: string) => {
     geminiServiceRef.current?.sendCodeContext(code, lang);
   }, []);
+
+  const handlePaste = React.useCallback((length: number) => {
+    // Ignore trivial pastes; flag meaningful chunks of code.
+    if (length >= 40) reportProctorEvent('paste', 'behavioral');
+  }, [reportProctorEvent]);
 
   return (
     <PageTransition className="flex w-full h-full">
@@ -259,19 +396,29 @@ export const Interviewer: React.FC = () => {
           </div>
         </Card>
 
-        {strikes.length > 0 && (
+        {alerts.length > 0 && (
           <div className="absolute top-24 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 pointer-events-none">
-            {strikes.map((strike, i) => (
-              <motion.div
-                key={i}
-                initial={{ opacity: 0, y: -20, scale: 0.9 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                className="bg-red-500/90 text-white px-5 py-3 rounded-xl font-bold shadow-[0_0_30px_rgba(239,68,68,0.4)] flex items-center gap-3 backdrop-blur-md border border-red-400"
-              >
-                <AlertTriangle size={20} className="animate-pulse" />
-                {strike}
-              </motion.div>
-            ))}
+            <AnimatePresence>
+              {alerts.map((alert) => {
+                const isHigh = alert.severity === 'high';
+                return (
+                  <motion.div
+                    key={alert.id}
+                    initial={{ opacity: 0, y: -20, scale: 0.9 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.9 }}
+                    className={`text-white px-5 py-3 rounded-xl font-semibold flex items-center gap-3 backdrop-blur-md border ${
+                      isHigh
+                        ? 'bg-red-500/90 border-red-400 shadow-[0_0_30px_rgba(239,68,68,0.4)]'
+                        : 'bg-amber-500/90 border-amber-400 shadow-[0_0_30px_rgba(245,158,11,0.35)]'
+                    }`}
+                  >
+                    <AlertTriangle size={18} className="animate-pulse" />
+                    {alert.label}
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
           </div>
         )}
 
@@ -285,7 +432,7 @@ export const Interviewer: React.FC = () => {
                 transition={{ type: "spring", stiffness: 300, damping: 30 }}
                 className="h-full rounded-3xl overflow-hidden shadow-2xl origin-right flex-1"
               >
-                <CodeEditor onCodeChange={handleCodeChange} />
+                <CodeEditor onCodeChange={handleCodeChange} onPaste={handlePaste} />
               </motion.div>
             )}
           </AnimatePresence>
@@ -321,6 +468,16 @@ export const Interviewer: React.FC = () => {
               </div>
             )}
           </motion.div>
+        </div>
+
+        {/* Self-view PiP (kept mounted so the face detector always has a video element) */}
+        <div className={`absolute bottom-6 left-6 z-40 transition-opacity duration-300 ${isRecording ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+          <div className="relative w-44 h-32 rounded-2xl overflow-hidden border border-white/10 shadow-2xl bg-black/60">
+            <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover -scale-x-100" />
+            <span className="absolute top-1.5 left-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded bg-red-500/80 text-white flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" /> REC
+            </span>
+          </div>
         </div>
 
         <AnimatePresence mode="wait">

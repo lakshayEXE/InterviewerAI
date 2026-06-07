@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckCircle2, BarChart3, Sparkles, AlertTriangle, RefreshCw } from 'lucide-react';
+import { CheckCircle2, BarChart3, Sparkles, AlertTriangle, RefreshCw, ShieldCheck } from 'lucide-react';
 import { useInterviewStore } from '../store/useInterviewStore';
 import { PageTransition } from '../components/ui/PageTransition';
 import { Card } from '../components/ui/Card';
@@ -9,6 +9,8 @@ import { motion } from 'framer-motion';
 import { evaluateInterview } from '../services/EvaluationService';
 import { RECOMMENDATION_META } from '../types/evaluation';
 import { NODE_CATEGORIES } from '../types/flow';
+import { PROCTOR_EVENT_META, PROCTOR_SEVERITY_PENALTY } from '../types/proctor';
+import type { ProctorEvent } from '../types/proctor';
 
 function scoreColor(score: number): string {
   if (score >= 75) return '#4ade80';
@@ -21,6 +23,20 @@ function categoryMeta(category: string) {
   return NODE_CATEGORIES.find((c) => c.category === category);
 }
 
+function computeIntegrityScore(events: ProctorEvent[]): number {
+  // Gemini events only confirm an existing ML flag, so exclude them to avoid double penalty.
+  const penalty = events
+    .filter((e) => e.source !== 'gemini')
+    .reduce((sum, e) => sum + PROCTOR_SEVERITY_PENALTY[e.severity], 0);
+  return Math.max(0, 100 - penalty);
+}
+
+function integrityColor(score: number): string {
+  if (score >= 85) return '#4ade80';
+  if (score >= 60) return '#facc15';
+  return '#f87171';
+}
+
 export const Evaluation: React.FC = () => {
   const navigate = useNavigate();
   const transcript = useInterviewStore((state) => state.transcript);
@@ -30,6 +46,7 @@ export const Evaluation: React.FC = () => {
   const apiKey = useInterviewStore((state) => state.apiKey);
   const evaluation = useInterviewStore((state) => state.evaluation);
   const setEvaluation = useInterviewStore((state) => state.setEvaluation);
+  const proctorEvents = useInterviewStore((state) => state.proctorEvents);
 
   const [loading, setLoading] = useState(!evaluation);
   const [error, setError] = useState<string | null>(null);
@@ -204,6 +221,104 @@ export const Evaluation: React.FC = () => {
                 );
               })}
             </div>
+          </Card>
+        </motion.div>
+
+        {/* Integrity / proctoring report */}
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }}>
+          <Card>
+            <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
+              <h2 className="text-2xl font-bold text-white flex items-center gap-3">
+                <div className="p-2 bg-sky-400/10 text-sky-400 rounded-xl">
+                  <ShieldCheck size={24} />
+                </div>
+                Integrity &amp; Proctoring
+              </h2>
+              {(() => {
+                const score = computeIntegrityScore(proctorEvents);
+                const color = integrityColor(score);
+                return (
+                  <div
+                    className="flex items-center gap-2 px-4 py-1.5 rounded-full font-bold border"
+                    style={{ color, borderColor: `${color}40`, backgroundColor: `${color}1a` }}
+                  >
+                    Integrity score: {score}
+                  </div>
+                );
+              })()}
+            </div>
+
+            {proctorEvents.length === 0 ? (
+              <div className="flex items-center gap-3 text-textMuted">
+                <CheckCircle2 size={20} className="text-green-400" />
+                No integrity flags were raised during this session.
+              </div>
+            ) : (
+              <>
+                {/* Counts by type */}
+                <div className="flex flex-wrap gap-3 mb-8">
+                  {Object.entries(
+                    proctorEvents.reduce<Record<string, number>>((acc, e) => {
+                      acc[e.type] = (acc[e.type] || 0) + 1;
+                      return acc;
+                    }, {})
+                  ).map(([type, count]) => {
+                    const meta = PROCTOR_EVENT_META[type as keyof typeof PROCTOR_EVENT_META];
+                    return (
+                      <div
+                        key={type}
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-background border border-gray-800 text-sm text-gray-300"
+                      >
+                        <span>{meta?.icon}</span>
+                        <span>{meta?.label ?? type}</span>
+                        <span className="font-bold text-white">×{count}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Timeline */}
+                <div className="space-y-2">
+                  {[...proctorEvents]
+                    .sort((a, b) => a.timestamp - b.timestamp)
+                    .map((ev) => {
+                      const meta = PROCTOR_EVENT_META[ev.type];
+                      const sevColor =
+                        ev.severity === 'high' ? '#f87171' : ev.severity === 'medium' ? '#facc15' : '#94a3b8';
+                      return (
+                        <div
+                          key={ev.id}
+                          className="flex items-center gap-3 px-3 py-2 rounded-xl bg-background/60 border border-gray-800/60"
+                        >
+                          <span className="text-lg">{meta?.icon}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm text-gray-200 truncate">{ev.message}</div>
+                            <div className="text-[11px] text-textMuted">
+                              {new Date(ev.timestamp).toLocaleTimeString()}
+                            </div>
+                          </div>
+                          {ev.confirmed && (
+                            <span className="text-[10px] font-bold px-2 py-1 rounded-md bg-red-500/15 text-red-400 border border-red-500/30 shrink-0">
+                              Confirmed by AI
+                            </span>
+                          )}
+                          <span
+                            className="text-[10px] font-semibold uppercase tracking-wide shrink-0"
+                            style={{ color: sevColor }}
+                          >
+                            {ev.severity}
+                          </span>
+                        </div>
+                      );
+                    })}
+                </div>
+
+                <p className="text-xs text-textMuted mt-6 leading-relaxed">
+                  Integrity signals are informational and kept separate from the competency scoring above.
+                  Camera analysis runs on-device; only flagged moments may be sent to the AI for confirmation.
+                </p>
+              </>
+            )}
           </Card>
         </motion.div>
 

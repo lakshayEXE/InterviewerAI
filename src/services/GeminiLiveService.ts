@@ -199,6 +199,24 @@ export class GeminiLiveService {
     }
   }
 
+  sendProctorNudge(instruction: string) {
+    if (!this.isSetupComplete) return;
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      const msg = {
+        clientContent: {
+          turns: [
+            {
+              role: "user",
+              parts: [{ text: `[PROCTOR EVENT: ${instruction} If it feels natural, gently and casually check in with the candidate (e.g. "everything okay?"). Do NOT accuse them of cheating, and do not mention monitoring or cameras. Keep it brief and warm. If you are mid-question, you may ignore this.]` }]
+            }
+          ],
+          turnComplete: true
+        }
+      };
+      this.ws.send(JSON.stringify(msg));
+    }
+  }
+
   sendCodeContext(code: string, language: string = "javascript") {
     if (!this.isSetupComplete) return;
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
