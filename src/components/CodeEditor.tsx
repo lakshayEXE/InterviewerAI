@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Editor, { type OnMount } from '@monaco-editor/react';
 import { Code2 } from 'lucide-react';
 
@@ -6,6 +6,10 @@ interface CodeEditorProps {
   onCodeChange: (code: string, language: string) => void;
   onPaste?: (length: number) => void;
   defaultValue?: string;
+  // Starter code pushed in by the interviewer (debug/optimize tasks). When this changes to a
+  // new value, it replaces the editor contents; candidate edits afterward are preserved.
+  injectedCode?: string;
+  injectedLanguage?: string;
 }
 
 const SUPPORTED_LANGUAGES = [
@@ -21,10 +25,13 @@ const SUPPORTED_LANGUAGES = [
 export const CodeEditor: React.FC<CodeEditorProps> = ({ 
   onCodeChange, 
   onPaste,
-  defaultValue = "// Write your solution here...\n\n"
+  defaultValue = "// Write your solution here...\n\n",
+  injectedCode,
+  injectedLanguage,
 }) => {
   const [code, setCode] = useState(defaultValue);
   const [language, setLanguage] = useState('javascript');
+  const lastInjectedRef = useRef<string | null>(null);
 
   const handleMount: OnMount = (editor) => {
     editor.onDidPaste((e) => {
@@ -32,6 +39,16 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
       if (pasted) onPaste?.(pasted.length);
     });
   };
+
+  // Load interviewer-provided starter code. Only applies when a genuinely new snippet
+  // arrives, so it never clobbers the candidate's in-progress edits on re-render.
+  useEffect(() => {
+    if (injectedCode != null && injectedCode !== lastInjectedRef.current) {
+      lastInjectedRef.current = injectedCode;
+      setCode(injectedCode);
+      if (injectedLanguage) setLanguage(injectedLanguage);
+    }
+  }, [injectedCode, injectedLanguage]);
 
   // Debounce logic: Only send code to API after 2 seconds of inactivity
   useEffect(() => {

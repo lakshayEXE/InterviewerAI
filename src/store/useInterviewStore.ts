@@ -14,6 +14,11 @@ export interface FlowNavActions {
   onGenerateAI: () => void;
 }
 
+export interface CandidateCode {
+  code: string;
+  language: string;
+}
+
 export interface InterviewStore {
   apiKey: string;
   setApiKey: (key: string) => void;
@@ -28,6 +33,17 @@ export interface InterviewStore {
   transcript: TranscriptItem[];
   addTranscriptItem: (item: TranscriptItem) => void;
   clearTranscript: () => void;
+  /** Extracted text of the candidate's uploaded resume (not persisted across sessions). */
+  resumeText: string;
+  setResumeText: (text: string) => void;
+  clearResumeText: () => void;
+  candidateCode: CandidateCode;
+  setCandidateCode: (code: string, language: string) => void;
+  clearCandidateCode: () => void;
+  // Starter code the interviewer loaded for debug/optimize tasks (for comparison at evaluation).
+  originalCode: CandidateCode;
+  setOriginalCode: (code: string, language: string) => void;
+  clearOriginalCode: () => void;
   /** Snapshot of the stages used in the most recent live session (may come from an invite link). */
   sessionNodes: Node[];
   setSessionNodes: (nodes: Node[]) => void;
@@ -71,6 +87,15 @@ export const useInterviewStore = create<InterviewStore>()(
       transcript: [],
       addTranscriptItem: (item) => set((state) => ({ transcript: [...state.transcript, item] })),
       clearTranscript: () => set({ transcript: [] }),
+      resumeText: '',
+      setResumeText: (text) => set({ resumeText: text }),
+      clearResumeText: () => set({ resumeText: '' }),
+      candidateCode: { code: '', language: '' },
+      setCandidateCode: (code, language) => set({ candidateCode: { code, language } }),
+      clearCandidateCode: () => set({ candidateCode: { code: '', language: '' } }),
+      originalCode: { code: '', language: '' },
+      setOriginalCode: (code, language) => set({ originalCode: { code, language } }),
+      clearOriginalCode: () => set({ originalCode: { code: '', language: '' } }),
       sessionNodes: [],
       setSessionNodes: (nodes) => set({ sessionNodes: nodes }),
       evaluation: null,
@@ -86,15 +111,11 @@ export const useInterviewStore = create<InterviewStore>()(
     {
       name: 'interview_session',
       partialize: (state) => ({
-        transcript: state.transcript,
         apiKey: state.apiKey,
         nodes: state.nodes,
         edges: state.edges,
         companyInfo: state.companyInfo,
         interviewerConfig: state.interviewerConfig,
-        sessionNodes: state.sessionNodes,
-        evaluation: state.evaluation,
-        proctorEvents: state.proctorEvents,
       }),
     }
   )

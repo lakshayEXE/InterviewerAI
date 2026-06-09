@@ -13,6 +13,10 @@ export class GeminiLiveService {
   // Fires once per completed utterance, for both the candidate (user) and the AI interviewer.
   public onTranscript: ((sender: 'ai' | 'user', text: string) => void) | null = null;
   public onConnectionStateChange: ((connected: boolean) => void) | null = null;
+  // Fires when the model reports (via the set_current_question tool) the current question/problem.
+  public onQuestion: ((question: string) => void) | null = null;
+  // Fires when the model loads starter code into the editor (via the set_editor_code tool).
+  public onEditorCode: ((code: string, language: string) => void) | null = null;
 
   // Accumulate streaming transcription chunks until an utterance is complete.
   private userBuffer: string = '';
@@ -53,11 +57,48 @@ export class GeminiLiveService {
           model: "models/gemini-3.1-flash-live-preview",
           generationConfig: {
             responseModalities: ["AUDIO"],
+            temperature: 1.0,
             ...(Object.keys(speechConfig).length > 0 ? { speechConfig } : {}),
           },
           systemInstruction: {
             parts: [{ text: systemInstructions }]
           },
+          tools: [{
+            functionDeclarations: [
+              {
+                name: "set_current_question",
+                description: "Call this every time you ask the candidate a new question or pose a new coding/DSA problem, so it can be displayed on their screen. Pass the clean, self-contained question or problem statement without greetings, acknowledgments, or feedback.",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    question: {
+                      type: "string",
+                      description: "The exact question or problem statement to show the candidate."
+                    }
+                  },
+                  required: ["question"]
+                }
+              },
+              {
+                name: "set_editor_code",
+                description: "Load starter code into the candidate's code editor. Use this for debug tasks (provide code with a genuine bug to find and fix) or optimize tasks (provide working but suboptimal code to improve). The editor opens automatically and the candidate edits the code in place.",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    code: {
+                      type: "string",
+                      description: "The starter code to place in the editor."
+                    },
+                    language: {
+                      type: "string",
+                      description: "The programming language id, one of: javascript, typescript, python, java, cpp, go, rust."
+                    }
+                  },
+                  required: ["code", "language"]
+                }
+              }
+            ]
+          }],
           outputAudioTranscription: { },
           inputAudioTranscription: { },
           // Be patient: tolerate longer thinking pauses before treating the candidate as done.
@@ -149,8 +190,32 @@ export class GeminiLiveService {
           this.flushAi();
         }
       }
+
+      // Structured tool calls from the model (silent — not part of the spoken audio).
+      if (parsed.toolCall?.functionCalls) {
+        this.handleToolCalls(parsed.toolCall.functionCalls);
+      }
     } catch (err) {
       console.error("Failed to parse incoming WS message", err);
+    }
+  }
+
+  private handleToolCalls(functionCalls: any[]) {
+    const responses: any[] = [];
+    for (const fc of functionCalls) {
+      if (fc?.name === 'set_current_question') {
+        const question = typeof fc.args?.question === 'string' ? fc.args.question.trim() : '';
+        if (question) this.onQuestion?.(question);
+      } else if (fc?.name === 'set_editor_code') {
+        const code = typeof fc.args?.code === 'string' ? fc.args.code : '';
+        const language = typeof fc.args?.language === 'string' ? fc.args.language : '';
+        if (code) this.onEditorCode?.(code, language);
+      }
+      // Always acknowledge so the model doesn't stall waiting for a function result.
+      responses.push({ id: fc?.id, name: fc?.name, response: { result: 'ok' } });
+    }
+    if (responses.length && this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ toolResponse: { functionResponses: responses } }));
     }
   }
 
@@ -210,7 +275,7 @@ export class GeminiLiveService {
               parts: [{ text: `[PROCTOR EVENT: ${instruction} If it feels natural, gently and casually check in with the candidate (e.g. "everything okay?"). Do NOT accuse them of cheating, and do not mention monitoring or cameras. Keep it brief and warm. If you are mid-question, you may ignore this.]` }]
             }
           ],
-          turnComplete: true
+          turnComplete: false
         }
       };
       this.ws.send(JSON.stringify(msg));
@@ -228,7 +293,7 @@ export class GeminiLiveService {
               parts: [{ text: `[SYSTEM INJECTION: The candidate just updated their code. DO NOT respond or acknowledge this update out loud. Just keep it in mind for when they ask a question.]\n\nCandidate's current code editor context:\n\`\`\`${language}\n${code}\n\`\`\`` }]
             }
           ],
-          turnComplete: true
+          turnComplete: false
         }
       };
       this.ws.send(JSON.stringify(msg));

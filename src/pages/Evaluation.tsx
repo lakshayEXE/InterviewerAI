@@ -43,6 +43,9 @@ export const Evaluation: React.FC = () => {
   const sessionNodes = useInterviewStore((state) => state.sessionNodes);
   const storeNodes = useInterviewStore((state) => state.nodes);
   const companyInfo = useInterviewStore((state) => state.companyInfo);
+  const candidateCode = useInterviewStore((state) => state.candidateCode);
+  const originalCode = useInterviewStore((state) => state.originalCode);
+  const resumeText = useInterviewStore((state) => state.resumeText);
   const apiKey = useInterviewStore((state) => state.apiKey);
   const evaluation = useInterviewStore((state) => state.evaluation);
   const setEvaluation = useInterviewStore((state) => state.setEvaluation);
@@ -57,7 +60,7 @@ export const Evaluation: React.FC = () => {
     setError(null);
     try {
       const nodes = sessionNodes.length > 0 ? sessionNodes : storeNodes;
-      const result = await evaluateInterview(apiKey, nodes, transcript, 'The candidate', companyInfo);
+      const result = await evaluateInterview(apiKey, nodes, transcript, 'The candidate', companyInfo, candidateCode, originalCode, resumeText);
       setEvaluation(result);
     } catch (err: any) {
       setError(err?.message || 'Failed to evaluate the interview.');
@@ -65,7 +68,7 @@ export const Evaluation: React.FC = () => {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apiKey, sessionNodes, storeNodes, transcript, companyInfo]);
+  }, [apiKey, sessionNodes, storeNodes, transcript, companyInfo, candidateCode, originalCode, resumeText]);
 
   useEffect(() => {
     if (hasRun.current) return;

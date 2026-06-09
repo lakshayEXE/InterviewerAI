@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
-import { PhoneCall, LogOut, Loader2, User, Code2, AlertTriangle, Maximize, Circle, Eye, EyeOff } from 'lucide-react';
+import { PhoneCall, LogOut, Loader2, User, Code2, AlertTriangle, Maximize, Circle, Eye, EyeOff, Bot } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { TranscriptSidebar } from '../components/TranscriptSidebar';
 import { Visualizer } from '../components/Visualizer';
@@ -21,6 +21,48 @@ const NUDGE_PHRASE: Partial<Record<ProctorEventType, string>> = {
   'looking-away': 'the candidate appeared to look away from the screen for several seconds',
   'no-face': 'the candidate may have stepped away from the camera',
 };
+
+// Map common language aliases from the model to the editor's supported language ids.
+const LANGUAGE_ALIASES: Record<string, string> = {
+  js: 'javascript', node: 'javascript', nodejs: 'javascript',
+  ts: 'typescript',
+  py: 'python', python3: 'python',
+  'c++': 'cpp', cplusplus: 'cpp',
+  golang: 'go',
+};
+const SUPPORTED_EDITOR_LANGUAGES = ['javascript', 'typescript', 'python', 'java', 'cpp', 'go', 'rust'];
+function normalizeLanguage(language: string): string {
+  const lower = (language || '').trim().toLowerCase();
+  if (SUPPORTED_EDITOR_LANGUAGES.includes(lower)) return lower;
+  return LANGUAGE_ALIASES[lower] || 'javascript';
+}
+
+// Sentence openers that signal an interviewer question/prompt even without a "?".
+const QUESTION_STARTERS = /^(how|what|why|when|where|which|who|can|could|would|will|do|does|did|is|are|should|tell me|walk me|give me|describe|explain|write|implement|design|solve|build|create|compute|calculate|derive|prove|optimize|debug|find|return|given|suppose|consider|let'?s|imagine)\b/i;
+const LEADING_FILLER = /^(so|now|okay|alright|right|and|well|ok),\s+/i;
+
+// Pull just the (last) question out of an AI turn, stripping acknowledgments/feedback.
+// Returns '' when the turn contains no detectable question, so callers can keep the
+// previously pinned question on screen instead of replacing it with filler.
+function extractLatestQuestion(text: string): string {
+  const clean = text.replace(/\s+/g, ' ').trim();
+  if (!clean) return '';
+  const sentences = clean.match(/[^.!?]+[.!?]*/g);
+  if (!sentences) return '';
+
+  let last = '';
+  for (const raw of sentences) {
+    const sentence = raw.trim();
+    if (!sentence) continue;
+    if (sentence.endsWith('?') || QUESTION_STARTERS.test(sentence)) {
+      last = sentence;
+    }
+  }
+  if (!last) return '';
+
+  const cleaned = last.replace(LEADING_FILLER, '').trim();
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+}
 
 const formatElapsed = (ms: number): string => {
   const total = Math.max(0, Math.floor(ms / 1000));
@@ -46,9 +88,14 @@ export const Interviewer: React.FC = () => {
   const companyInfo = useInterviewStore(state => state.companyInfo);
   const interviewerConfig = useInterviewStore(state => state.interviewerConfig);
 
+  const resumeText = useInterviewStore(state => state.resumeText);
   const transcript = useInterviewStore(state => state.transcript);
   const addTranscriptItem = useInterviewStore(state => state.addTranscriptItem);
   const clearTranscript = useInterviewStore(state => state.clearTranscript);
+  const setCandidateCode = useInterviewStore(state => state.setCandidateCode);
+  const clearCandidateCode = useInterviewStore(state => state.clearCandidateCode);
+  const setOriginalCode = useInterviewStore(state => state.setOriginalCode);
+  const clearOriginalCode = useInterviewStore(state => state.clearOriginalCode);
   const setSessionActive = useInterviewStore(state => state.setSessionActive);
   const setEvaluation = useInterviewStore(state => state.setEvaluation);
   const setSessionNodes = useInterviewStore(state => state.setSessionNodes);
@@ -65,6 +112,11 @@ export const Interviewer: React.FC = () => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showCodeEditor, setShowCodeEditor] = useState(false);
   const [alerts, setAlerts] = useState<{ id: string; label: string; severity: string }[]>([]);
+  // Current question reported by the model via the set_current_question tool (authoritative).
+  const [toolQuestion, setToolQuestion] = useState('');
+  // Starter code the model loads into the editor via the set_editor_code tool (debug/optimize).
+  const [injectedCode, setInjectedCode] = useState<string | undefined>(undefined);
+  const [injectedLanguage, setInjectedLanguage] = useState<string | undefined>(undefined);
 
   const audioRecorderRef = useRef<AudioRecorder | null>(null);
   const audioPlayerRef = useRef<AudioPlayer | null>(null);
@@ -255,6 +307,15 @@ export const Interviewer: React.FC = () => {
   };
 
   useEffect(() => {
+    clearTranscript();
+    clearProctorEvents();
+    clearCandidateCode();
+    clearOriginalCode();
+    setEvaluation(null);
+    setToolQuestion('');
+    setInjectedCode(undefined);
+    setInjectedLanguage(undefined);
+
     if (apiKey) {
       geminiServiceRef.current = new GeminiLiveService(apiKey);
       audioPlayerRef.current = new AudioPlayer();
@@ -278,6 +339,18 @@ export const Interviewer: React.FC = () => {
           text: clean,
           timestamp: Date.now(),
         });
+      };
+
+      geminiServiceRef.current.onQuestion = (question) => {
+        setToolQuestion(question);
+      };
+
+      geminiServiceRef.current.onEditorCode = (code, language) => {
+        const normalized = normalizeLanguage(language);
+        setInjectedCode(code);
+        setInjectedLanguage(normalized);
+        setOriginalCode(code, normalized);
+        setShowCodeEditor(true);
       };
     }
 
@@ -342,10 +415,15 @@ export const Interviewer: React.FC = () => {
       sessionStartRef.current = Date.now();
       setElapsedMs(0);
 
-      const systemPrompt = buildSystemPrompt(activeNodes, candidateName, session.companyInfo, session.config);
+      const systemPrompt = buildSystemPrompt(activeNodes, candidateName, session.companyInfo, session.config, resumeText);
       clearTranscript();
       setEvaluation(null);
       clearProctorEvents();
+      clearCandidateCode();
+      clearOriginalCode();
+      setToolQuestion('');
+      setInjectedCode(undefined);
+      setInjectedLanguage(undefined);
       setSessionNodes(activeNodes);
       geminiServiceRef.current.connect(systemPrompt, {
         voiceName: session.config.voiceName,
@@ -387,7 +465,8 @@ export const Interviewer: React.FC = () => {
 
   const handleCodeChange = React.useCallback((code: string, lang: string) => {
     geminiServiceRef.current?.sendCodeContext(code, lang);
-  }, []);
+    setCandidateCode(code, lang);
+  }, [setCandidateCode]);
 
   const handlePaste = React.useCallback((length: number) => {
     // Ignore trivial pastes; flag meaningful chunks of code.
@@ -410,6 +489,22 @@ export const Interviewer: React.FC = () => {
     'your-turn': { label: 'Your turn',  dot: 'bg-emerald-400', ring: 'bg-emerald-400', text: 'text-textMain' },
     thinking:  { label: 'Thinking…',    dot: 'bg-amber-400', ring: 'bg-amber-400', text: 'text-textMuted' },
   };
+
+  // Heuristic fallback: scan backward for the last AI turn that contains a detectable
+  // question. Used only until the model reports a question via the set_current_question tool.
+  const heuristicQuestion = React.useMemo(() => {
+    for (let i = transcript.length - 1; i >= 0; i--) {
+      const item = transcript[i];
+      if (item.sender !== 'ai') continue;
+      const question = extractLatestQuestion(item.text);
+      if (question) return question;
+    }
+    return '';
+  }, [transcript]);
+
+  // Prefer the authoritative tool-reported question; fall back to the heuristic when the
+  // model hasn't called the tool yet. Shown above the IDE so the candidate can re-read it.
+  const currentQuestion = toolQuestion || heuristicQuestion;
   const speaker = speakerMeta[speakerState];
 
   // Face health: warn if a recent ML event (no-face/looking-away) was raised
@@ -600,9 +695,22 @@ export const Interviewer: React.FC = () => {
                 animate={{ opacity: 1, x: 0, width: '100%' }}
                 exit={{ opacity: 0, x: 20, width: 0 }}
                 transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                className="h-full rounded-3xl overflow-hidden shadow-2xl origin-right flex-1"
+                className="h-full origin-right flex-1 flex flex-col gap-3 min-w-0"
               >
-                <CodeEditor onCodeChange={handleCodeChange} onPaste={handlePaste} />
+                {currentQuestion && (
+                  <div className="shrink-0 rounded-2xl border border-primary/20 bg-surface/80 backdrop-blur-sm px-4 py-3 shadow-lg">
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <Bot size={14} className="text-primary shrink-0" />
+                      <span className="text-[11px] font-semibold uppercase tracking-wider text-primary">Current question</span>
+                    </div>
+                    <p className="text-sm leading-relaxed text-textMain/90 max-h-24 overflow-y-auto">
+                      {currentQuestion}
+                    </p>
+                  </div>
+                )}
+                <div className="flex-1 min-h-0 rounded-3xl overflow-hidden shadow-2xl">
+                  <CodeEditor onCodeChange={handleCodeChange} onPaste={handlePaste} injectedCode={injectedCode} injectedLanguage={injectedLanguage} />
+                </div>
               </motion.div>
             )}
           </AnimatePresence>

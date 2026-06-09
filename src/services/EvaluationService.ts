@@ -38,7 +38,10 @@ function buildEvaluationPrompt(
   stages: CanonicalStage[],
   candidateName: string,
   companyInfo: CompanyInfo | undefined,
-  conversation: string
+  conversation: string,
+  code?: { code: string; language: string },
+  originalCode?: { code: string; language: string },
+  resumeText?: string
 ): string {
   const sections: string[] = [];
 
@@ -57,6 +60,10 @@ function buildEvaluationPrompt(
 
   sections.push(`\n[CANDIDATE]\n${candidateName}`);
 
+  if (resumeText && resumeText.trim()) {
+    sections.push(`\n[CANDIDATE RESUME]\nText extracted from the candidate's resume. Use it to judge whether their interview answers were consistent with their claimed experience, and whether they could speak credibly to what they listed.\n"""\n${resumeText.trim()}\n"""`);
+  }
+
   const stageList = stages
     .map((s, i) => `${i + 1}. stageId="${s.stageId}" | category=${s.category} | "${s.label}"${s.description ? ` — ${s.description}` : ''}`)
     .join('\n');
@@ -64,9 +71,21 @@ function buildEvaluationPrompt(
 
   sections.push(`\n[TRANSCRIPT]\n${conversation}`);
 
+  const trimmedOriginal = originalCode?.code?.trim() ?? '';
+  const hasOriginal = trimmedOriginal.length > 0 && trimmedOriginal.replace(/\/\/.*$/gm, '').trim().length > 10;
+  if (hasOriginal) {
+    sections.push(`\n[STARTER CODE PROVIDED TO CANDIDATE${originalCode?.language ? ` — ${originalCode.language}` : ''}]\nThis is the buggy/suboptimal code the interviewer loaded for a debug or optimize task. Compare it against the candidate's final code to judge whether they actually found the bug or improved it.\n\`\`\`\n${trimmedOriginal}\n\`\`\``);
+  }
+
+  const trimmedCode = code?.code?.trim() ?? '';
+  const isMeaningfulCode = trimmedCode.length > 0 && trimmedCode.replace(/\/\/.*$/gm, '').trim().length > 10;
+  if (isMeaningfulCode) {
+    sections.push(`\n[CANDIDATE'S FINAL CODE${code?.language ? ` — ${code.language}` : ''}]\n\`\`\`\n${trimmedCode}\n\`\`\``);
+  }
+
   sections.push(`\n[INSTRUCTIONS]
 - The stages happened IN ORDER. Segment the conversation and attribute each part to the planned stage it belongs to.
-- Score EACH stage from 0 to 100 based strictly on the CANDIDATE's responses and reasoning — NOT on the interviewer's questions.
+- Score EACH stage from 0 to 100 based strictly on the CANDIDATE's responses and reasoning — NOT on the interviewer's questions.${isMeaningfulCode ? '\n- For coding and DSA stages, weigh the CANDIDATE\'S FINAL CODE heavily: judge correctness, edge-case handling, time/space complexity, and code quality alongside what they said.' : ''}${hasOriginal ? '\n- For debug/optimize tasks, compare the STARTER CODE against the final code: did the candidate genuinely fix the bug or improve complexity, or leave it largely unchanged? Score accordingly.' : ''}
 - If a stage had little or no candidate input (e.g. the interview ended early or the candidate stayed silent), score it low (0-30) and say so explicitly.
 - Be honest and calibrated. Do not inflate scores. An average candidate is ~60.
 - Give a one- to two-sentence "feedback" per stage, grounded in specific things the candidate actually said.
@@ -115,7 +134,10 @@ export async function evaluateInterview(
   nodes: Node[],
   transcript: TranscriptItem[],
   candidateName: string,
-  companyInfo?: CompanyInfo
+  companyInfo?: CompanyInfo,
+  code?: { code: string; language: string },
+  originalCode?: { code: string; language: string },
+  resumeText?: string
 ): Promise<EvaluationResult> {
   if (!apiKey) {
     throw new Error('Missing Gemini API key. Configure it in settings.');
@@ -129,7 +151,7 @@ export async function evaluateInterview(
     .map((t) => `${t.sender === 'user' ? 'CANDIDATE' : 'INTERVIEWER'}: ${t.text}`)
     .join('\n');
 
-  const prompt = buildEvaluationPrompt(stages, candidateName, companyInfo, conversation);
+  const prompt = buildEvaluationPrompt(stages, candidateName, companyInfo, conversation, code, originalCode, resumeText);
 
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
