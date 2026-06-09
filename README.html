@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>InterviewAI — AI-Powered Technical Interviews</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,600&family=Inter:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#141413;--surface:#1d1b18;--surface-hi:#252320;
+  --primary:#cc785c;--primary-dim:#c6613f;--accent:#d97757;
+  --text:#faf9f5;--text-muted:#b0aea5;--text-dim:#87867f;
+  --green:#4ade80;--blue:#60a5fa;--purple:#a78bfa;--orange:#fb923c;
+  --pink:#f472b6;--yellow:#facc15;--red:#f87171;--teal:#2dd4bf;
+}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg);color:var(--text);
+  font-family:'Inter',system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased;line-height:1.6;
+}
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--surface-hi);border-radius:4px}
+::-webkit-scrollbar-thumb:hover{background:var(--primary)}
+a{color:var(--primary);text-decoration:none;transition:color .2s}
+a:hover{color:var(--accent)}
+.serif{font-family:'Fraunces',Georgia,serif;letter-spacing:-.02em}
+.mono{font-family:'IBM Plex Mono',monospace}
+.container{max-width:1100px;margin:0 auto;padding:0 24px}
+
+/* ── Grain + radial bg ── */
+.grain{position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:radial-gradient(rgba(250,249,245,.02) 1px,transparent 1px);background-size:28px 28px;opacity:.5}
+.warm-glow{position:fixed;top:0;left:0;right:0;height:600px;pointer-events:none;z-index:0;
+  background:radial-gradient(ellipse 70% 50% at 50% -10%,rgba(204,120,92,.1),transparent 70%)}
+
+/* ── Gradient text ── */
+.gradient-text{
+  background:linear-gradient(135deg,#cc785c,#d97757,#fb923c);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+
+/* ── Glass card ── */
+.glass{
+  background:rgba(29,27,24,.5);backdrop-filter:blur(12px);
+  border:1px solid rgba(250,249,245,.06);border-radius:16px;
+  transition:all .3s ease;
+}
+.glass:hover{border-color:rgba(204,120,92,.2);box-shadow:0 0 40px rgba(204,120,92,.05)}
+
+/* ── Scan card hover ── */
+.scan{position:relative;overflow:hidden}
+.scan::after{
+  content:'';position:absolute;inset:0;border-radius:inherit;
+  background:linear-gradient(90deg,transparent,rgba(204,120,92,.05),transparent);
+  transform:translateX(-100%);transition:transform .6s ease;pointer-events:none;
+}
+.scan:hover::after{transform:translateX(100%)}
+
+/* ── Badge ── */
+.badge{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:6px 14px;border-radius:999px;font-size:12px;font-weight:500;
+  border:1px solid rgba(250,249,245,.06);background:rgba(29,27,24,.6);color:var(--text-muted);
+}
+
+/* ── Section ── */
+section{padding:100px 0;position:relative;z-index:1}
+.section-label{
+  font-family:'IBM Plex Mono',monospace;font-size:11px;
+  text-transform:uppercase;letter-spacing:.3em;color:var(--primary);margin-bottom:12px;
+}
+.section-title{
+  font-family:'Fraunces',Georgia,serif;font-size:clamp(28px,5vw,48px);
+  font-weight:300;color:var(--text);line-height:1.15;letter-spacing:-.02em;
+}
+
+/* ── Hero ── */
+.hero{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;position:relative;overflow:hidden}
+.hero h1{font-size:clamp(40px,8vw,88px);line-height:1.02;margin-bottom:20px}
+.orbit-container{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);pointer-events:none}
+.orbit-ring{fill:none;stroke:rgba(250,249,245,.04);stroke-width:1;stroke-dasharray:4 6}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes spin-r{to{transform:rotate(-360deg)}}
+.orbit-g1{animation:spin 8s linear infinite}
+.orbit-g2{animation:spin-r 12s linear infinite}
+.orbit-g3{animation:spin 18s linear infinite}
+.orbit-dot{border-radius:50%;position:absolute}
+.live-dot{width:6px;height:6px;border-radius:50%;background:var(--primary);animation:pulse-dot 2s infinite}
+@keyframes pulse-dot{0%,100%{box-shadow:0 0 0 0 rgba(204,120,92,.6)}50%{box-shadow:0 0 0 6px rgba(204,120,92,0)}}
+
+/* ── Feature grid ── */
+.feat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
+.feat-card{padding:28px;display:flex;flex-direction:column;gap:12px}
+.feat-icon{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.feat-card h3{font-size:16px;font-weight:600;color:var(--text)}
+.feat-card p{font-size:13px;color:var(--text-muted);line-height:1.6}
+
+/* ── Proctoring layers ── */
+.layer-card{padding:24px;border-left:3px solid var(--layer-color,var(--primary))}
+.layer-num{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.15em}
+.layer-title{font-size:15px;font-weight:600;color:var(--text);margin-top:2px}
+.layer-items{list-style:none;margin-top:10px;display:flex;flex-direction:column;gap:6px}
+.layer-items li{font-size:12px;color:var(--text-muted);display:flex;align-items:center;gap:8px}
+.layer-items li::before{content:'';width:4px;height:4px;border-radius:50%;background:var(--layer-color,var(--text-dim));flex-shrink:0}
+.layer-detail{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text-dim);margin-top:10px}
+
+/* ── Event grid ── */
+.event-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
+.event-card{display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:12px;background:rgba(20,20,19,.5);border:1px solid rgba(250,249,245,.04);transition:all .2s}
+.event-card:hover{border-color:rgba(250,249,245,.1)}
+.event-icon{font-size:18px;flex-shrink:0}
+.event-info{flex:1;min-width:0}
+.event-label{font-size:13px;font-weight:500;color:#d4d3ce}
+.sev-dot{width:6px;height:6px;border-radius:50%;display:inline-block;margin-right:4px}
+.sev-text{font-size:10px;text-transform:uppercase;font-weight:600;letter-spacing:.05em}
+.penalty{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-dim);background:rgba(20,20,19,.6);padding:3px 8px;border-radius:6px;border:1px solid rgba(250,249,245,.04);flex-shrink:0}
+
+/* ── Score ring ── */
+.score-ring{position:relative;width:160px;height:160px;margin:0 auto 24px}
+.score-ring svg{width:100%;height:100%;transform:rotate(-90deg)}
+.score-ring .track{fill:none;stroke:rgba(255,255,255,.06);stroke-width:8}
+.score-ring .fill{fill:none;stroke:var(--blue);stroke-width:8;stroke-linecap:round;
+  stroke-dasharray:327;stroke-dashoffset:72;transition:stroke-dashoffset 1.5s ease-out}
+.score-num{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.score-num strong{font-size:36px;font-weight:700;color:var(--text)}
+.score-num span{font-family:'IBM Plex Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:.15em;color:var(--text-dim)}
+
+/* ── Recommendation tiers ── */
+.tier{display:flex;align-items:center;gap:12px;padding:10px 16px;border-radius:12px;margin-bottom:6px}
+.tier-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.tier-label{font-size:14px;font-weight:500}
+
+/* ── Terminal ── */
+.terminal{border-radius:16px;overflow:hidden;border:1px solid rgba(250,249,245,.08);background:#0d0d0c;box-shadow:0 25px 60px rgba(0,0,0,.4)}
+.terminal-bar{display:flex;align-items:center;gap:8px;padding:12px 18px;border-bottom:1px solid rgba(250,249,245,.06)}
+.terminal-dot{width:12px;height:12px;border-radius:50%}
+.terminal-title{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-dim);margin-left:8px}
+.terminal-body{padding:24px;font-family:'IBM Plex Mono',monospace;font-size:13px;line-height:1.8}
+.terminal-body .cmd{color:var(--text-dim)}
+.terminal-body .cmd span{color:var(--primary)}
+.terminal-body .out{color:var(--text-muted)}
+
+/* ── Formula card ── */
+.formula{
+  background:rgba(20,20,19,.6);border-radius:12px;border:1px solid rgba(250,249,245,.04);
+  padding:16px 20px;font-family:'IBM Plex Mono',monospace;font-size:14px;color:#d4d3ce;
+}
+
+/* ── Install section ── */
+.install-steps{display:flex;flex-direction:column;gap:12px;margin-top:20px}
+.install-step{display:flex;align-items:flex-start;gap:16px}
+.step-num{
+  width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;flex-shrink:0;
+  border:1px solid rgba(204,120,92,.3);color:var(--primary);background:rgba(204,120,92,.08);
+}
+.step-content{flex:1}
+.step-content p{font-size:14px;color:var(--text-muted);margin-bottom:8px}
+.code-block{
+  background:#0d0d0c;border:1px solid rgba(250,249,245,.06);border-radius:10px;
+  padding:14px 18px;font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--green);
+  overflow-x:auto;white-space:pre;
+}
+
+/* ── CTA section ── */
+.cta-card{
+  padding:1px;border-radius:16px;
+  background:linear-gradient(90deg,rgba(204,120,92,.5),rgba(217,119,87,.3),rgba(204,120,92,.5));
+}
+.cta-inner{background:var(--bg);border-radius:15px;padding:60px 40px;text-align:center;position:relative;overflow:hidden}
+
+/* ── Tech badges ── */
+.tech-row{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-top:32px}
+.tech-badge{
+  font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-dim);
+  padding:6px 14px;border-radius:999px;border:1px solid rgba(250,249,245,.06);background:rgba(29,27,24,.5);
+}
+
+/* ── Flow preview ── */
+.flow-node{
+  display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;
+  background:rgba(20,20,19,.5);border:1px solid rgba(250,249,245,.04);border-left-width:3px;
+}
+.flow-connector{display:flex;justify-content:center;padding:2px 0}
+.flow-connector-line{width:1px;height:18px;border-left:1px dashed rgba(250,249,245,.1)}
+
+/* ── Responsive ── */
+@media(max-width:768px){
+  .feat-grid{grid-template-columns:1fr}
+  .event-grid{grid-template-columns:1fr}
+  .two-col{grid-template-columns:1fr !important}
+  section{padding:60px 0}
+  .hero h1{font-size:36px}
+}
+
+.two-col{display:grid;grid-template-columns:2fr 3fr;gap:16px;align-items:start}
+.three-col{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+
+/* ── Waveform ── */
+.wave-bar{display:flex;align-items:end;gap:3px;height:24px}
+.wave-bar span{width:3px;border-radius:2px;background:var(--primary);opacity:.5}
+@keyframes wave{0%,100%{height:4px}50%{height:100%}}
+
+/* ── Separator ── */
+.sep{height:1px;background:linear-gradient(90deg,transparent,rgba(204,120,92,.15),transparent);margin:0 auto;max-width:600px}
+
+/* ── Footer ── */
+footer{padding:40px 0;text-align:center;color:var(--text-dim);font-size:13px;position:relative;z-index:1}
+</style>
+</head>
+<body>
+
+<div class="grain"></div>
+<div class="warm-glow"></div>
+
+<!-- ═══════════════════ HERO ═══════════════════ -->
+<section class="hero">
+  <div class="orbit-container" style="width:600px;height:600px">
+    <svg width="600" height="600" viewBox="0 0 600 600" style="opacity:.4">
+      <circle class="orbit-ring" cx="300" cy="300" r="140"/>
+      <circle class="orbit-ring" cx="300" cy="300" r="210"/>
+      <circle class="orbit-ring" cx="300" cy="300" r="280"/>
+    </svg>
+  </div>
+
+  <div style="position:relative;z-index:2;max-width:800px;padding:0 24px">
+    <div style="display:inline-flex;align-items:center;gap:8px;margin-bottom:32px">
+      <span class="live-dot"></span>
+      <span class="mono" style="font-size:11px;text-transform:uppercase;letter-spacing:.2em;color:var(--text-muted)">Powered by Google Gemini</span>
+    </div>
+
+    <h1 class="serif" style="color:var(--text);font-weight:300">
+      Interviews,<br>conducted by <em class="gradient-text">AI</em>.
+    </h1>
+
+    <p style="font-size:18px;color:var(--text-muted);max-width:560px;margin:0 auto 36px;font-weight:300;line-height:1.6">
+      A browser-based AI interview platform that designs flows, conducts voice sessions, detects cheating with on-device ML, and scores candidates autonomously.
+    </p>
+
+    <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:10px;margin-bottom:24px">
+      <a href="https://interviewer-ai-9uls.vercel.app/" target="_blank" rel="noopener"
+         style="display:inline-flex;align-items:center;gap:8px;padding:12px 28px;border-radius:999px;background:var(--primary);color:#fff;font-weight:500;font-size:14px;transition:all .2s;box-shadow:0 4px 24px rgba(204,120,92,.3)">
+        Live Demo &rarr;
+      </a>
+      <a href="#install" style="display:inline-flex;align-items:center;gap:8px;padding:12px 28px;border-radius:999px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);color:var(--text);font-weight:500;font-size:14px;transition:all .2s">
+        Installation
+      </a>
+    </div>
+
+    <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:8px">
+      <span class="badge">React 19</span>
+      <span class="badge">TypeScript</span>
+      <span class="badge">Gemini Live</span>
+      <span class="badge">MediaPipe</span>
+      <span class="badge">Monaco Editor</span>
+      <span class="badge">Tailwind CSS 4</span>
+    </div>
+  </div>
+
+  <div style="position:absolute;bottom:32px;display:flex;flex-direction:column;align-items:center;gap:4px">
+    <span class="mono" style="font-size:10px;text-transform:uppercase;letter-spacing:.2em;color:var(--text-dim)">Explore</span>
+    <span style="color:var(--text-dim);font-size:18px">&#8964;</span>
+  </div>
+</section>
+
+<!-- ═══════════════════ INSTALLATION ═══════════════════ -->
+<section id="install">
+  <div class="container">
+    <div class="section-label">Quick Start</div>
+    <h2 class="section-title" style="margin-bottom:8px">Up and running in 60 seconds.</h2>
+    <p style="color:var(--text-muted);font-size:15px;margin-bottom:32px;max-width:520px">Clone the repo, add your Gemini API key, and start the dev server. No backend required &mdash; everything runs in the browser.</p>
+
+    <div class="glass" style="padding:32px;max-width:680px">
+      <div class="install-steps">
+        <div class="install-step">
+          <div class="step-num">1</div>
+          <div class="step-content">
+            <p>Clone &amp; install dependencies</p>
+            <div class="code-block">git clone https://github.com/user/InterviewAI.git
+cd InterviewAI
+npm install</div>
+          </div>
+        </div>
+        <div class="install-step">
+          <div class="step-num">2</div>
+          <div class="step-content">
+            <p>Add your Gemini API key</p>
+            <div class="code-block">echo "VITE_GEMINI_API_KEY=your_key_here" > .env</div>
+          </div>
+        </div>
+        <div class="install-step">
+          <div class="step-num">3</div>
+          <div class="step-content">
+            <p>Start the dev server</p>
+            <div class="code-block">npm run dev</div>
+          </div>
+        </div>
+        <div class="install-step">
+          <div class="step-num">4</div>
+          <div class="step-content">
+            <p>Open in browser</p>
+            <div class="code-block" style="color:var(--blue)">http://localhost:5173</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <p style="margin-top:16px;font-size:12px;color:var(--text-dim)">
+      Requirements: Node.js 18+, a Gemini API key from <a href="https://aistudio.google.com/apikey" target="_blank">Google AI Studio</a>, and a modern browser with WebSocket &amp; WebGPU/WASM support.
+    </p>
+  </div>
+</section>
+
+<div class="sep"></div>
+
+<!-- ═══════════════════ ARCHITECTURE ═══════════════════ -->
+<section>
+  <div class="container">
+    <div class="section-label">Architecture</div>
+    <h2 class="section-title" style="margin-bottom:8px">How an interview happens.</h2>
+    <p style="color:var(--text-muted);font-size:15px;margin-bottom:40px;max-width:580px">Four stages, fully autonomous. From designing the interview to scoring the candidate &mdash; no human in the loop.</p>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px">
+      <div class="glass scan" style="padding:24px">
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:40px;font-weight:200;color:rgba(255,255,255,.06);line-height:1">01</div>
+        <div style="width:36px;height:36px;border-radius:10px;background:rgba(74,222,128,.1);border:1px solid rgba(74,222,128,.2);display:flex;align-items:center;justify-content:center;margin:12px 0;font-size:16px">&#x1F4D0;</div>
+        <h3 style="font-size:16px;font-weight:600;color:var(--text);margin-bottom:6px">Design Flow</h3>
+        <p style="font-size:13px;color:var(--text-muted)">Drag-and-drop interview stages or let AI generate them from a job description.</p>
+      </div>
+      <div class="glass scan" style="padding:24px">
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:40px;font-weight:200;color:rgba(255,255,255,.06);line-height:1">02</div>
+        <div style="width:36px;height:36px;border-radius:10px;background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.2);display:flex;align-items:center;justify-content:center;margin:12px 0;font-size:16px">&#x1F3A4;</div>
+        <h3 style="font-size:16px;font-weight:600;color:var(--text);margin-bottom:6px">Voice Interview</h3>
+        <p style="font-size:13px;color:var(--text-muted)">Gemini Live conducts the call &mdash; real-time speech, follow-ups, and probing.</p>
+      </div>
+      <div class="glass scan" style="padding:24px">
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:40px;font-weight:200;color:rgba(255,255,255,.06);line-height:1">03</div>
+        <div style="width:36px;height:36px;border-radius:10px;background:rgba(167,139,250,.1);border:1px solid rgba(167,139,250,.2);display:flex;align-items:center;justify-content:center;margin:12px 0;font-size:16px">&#x1F6E1;</div>
+        <h3 style="font-size:16px;font-weight:600;color:var(--text);margin-bottom:6px">Integrity Monitor</h3>
+        <p style="font-size:13px;color:var(--text-muted)">On-device ML + browser signals + AI vision detect cheating in real time.</p>
+      </div>
+      <div class="glass scan" style="padding:24px">
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:40px;font-weight:200;color:rgba(255,255,255,.06);line-height:1">04</div>
+        <div style="width:36px;height:36px;border-radius:10px;background:rgba(251,146,60,.1);border:1px solid rgba(251,146,60,.2);display:flex;align-items:center;justify-content:center;margin:12px 0;font-size:16px">&#x1F4CA;</div>
+        <h3 style="font-size:16px;font-weight:600;color:var(--text);margin-bottom:6px">AI Evaluation</h3>
+        <p style="font-size:13px;color:var(--text-muted)">Stage-by-stage scoring, hiring recommendation, and a full integrity report.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="sep"></div>
+
+<!-- ═══════════════════ FLOW BUILDER ═══════════════════ -->
+<section>
+  <div class="container">
+    <div class="section-label">Flow Builder</div>
+    <h2 class="section-title" style="margin-bottom:8px">Design your interview, visually.</h2>
+    <p style="color:var(--text-muted);font-size:15px;margin-bottom:40px;max-width:560px">Each node is a stage. Configure difficulty, topics, and AI behavior. Connect them to define order. Generate entire flows from a job description with AI.</p>
+
+    <div class="two-col">
+      <!-- Mini flow diagram -->
+      <div class="glass" style="padding:24px">
+        <div class="mono" style="font-size:10px;text-transform:uppercase;letter-spacing:.2em;color:var(--text-dim);margin-bottom:16px">Live Preview</div>
+        <div>
+          <div class="flow-node" style="border-left-color:var(--green)"><span>&#x1F44B;</span><span style="font-size:13px;font-weight:500;color:#d4d3ce">Greeting</span></div>
+          <div class="flow-connector"><div class="flow-connector-line"></div></div>
+          <div class="flow-node" style="border-left-color:var(--blue)"><span>&#x1F4DA;</span><span style="font-size:13px;font-weight:500;color:#d4d3ce">Fundamentals</span></div>
+          <div class="flow-connector"><div class="flow-connector-line"></div></div>
+          <div class="flow-node" style="border-left-color:var(--pink)"><span>&#x1F9E9;</span><span style="font-size:13px;font-weight:500;color:#d4d3ce">DSA</span></div>
+          <div class="flow-connector"><div class="flow-connector-line"></div></div>
+          <div class="flow-node" style="border-left-color:var(--purple)"><span>&#x1F4BB;</span><span style="font-size:13px;font-weight:500;color:#d4d3ce">Live Coding</span></div>
+          <div class="flow-connector"><div class="flow-connector-line"></div></div>
+          <div class="flow-node" style="border-left-color:var(--orange)"><span>&#x1F3D7;</span><span style="font-size:13px;font-weight:500;color:#d4d3ce">System Design</span></div>
+          <div class="flow-connector"><div class="flow-connector-line"></div></div>
+          <div class="flow-node" style="border-left-color:var(--yellow)"><span>&#x1F91D;</span><span style="font-size:13px;font-weight:500;color:#d4d3ce">Behavioral</span></div>
+          <div class="flow-connector"><div class="flow-connector-line"></div></div>
+          <div class="flow-node" style="border-left-color:var(--teal)"><span>&#x1F3AC;</span><span style="font-size:13px;font-weight:500;color:#d4d3ce">Wrap-up</span></div>
+        </div>
+      </div>
+
+      <!-- Features -->
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div class="glass scan" style="padding:20px;display:flex;align-items:start;gap:14px">
+          <div style="width:36px;height:36px;border-radius:10px;background:rgba(167,139,250,.1);border:1px solid rgba(167,139,250,.2);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:16px">&#x2728;</div>
+          <div>
+            <h3 style="font-size:14px;font-weight:600;color:var(--text)">AI Generate from JD</h3>
+            <p style="font-size:12px;color:var(--text-muted);margin-top:4px">Paste a job description and resume &mdash; get a full interview flow in seconds.</p>
+          </div>
+        </div>
+        <div class="glass scan" style="padding:20px;display:flex;align-items:start;gap:14px">
+          <div style="width:36px;height:36px;border-radius:10px;background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.2);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:16px">&#x1F517;</div>
+          <div>
+            <h3 style="font-size:14px;font-weight:600;color:var(--text)">Shareable Invite Links</h3>
+            <p style="font-size:12px;color:var(--text-muted);margin-top:4px">Generate a link for candidates with the flow, company context, and interviewer config baked in.</p>
+          </div>
+        </div>
+        <div class="glass scan" style="padding:20px;display:flex;align-items:start;gap:14px">
+          <div style="width:36px;height:36px;border-radius:10px;background:rgba(74,222,128,.1);border:1px solid rgba(74,222,128,.2);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:16px">&#x1F9D1;</div>
+          <div>
+            <h3 style="font-size:14px;font-weight:600;color:var(--text)">Interviewer Personas</h3>
+            <p style="font-size:12px;color:var(--text-muted);margin-top:4px">Choose Friendly, Balanced, or Strict &mdash; each persona adjusts how the AI probes and hints.</p>
+          </div>
+        </div>
+        <div class="glass scan" style="padding:20px;display:flex;align-items:start;gap:14px">
+          <div style="width:36px;height:36px;border-radius:10px;background:rgba(251,146,60,.1);border:1px solid rgba(251,146,60,.2);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:16px">&#x1F50A;</div>
+          <div>
+            <h3 style="font-size:14px;font-weight:600;color:var(--text)">8 Voices &middot; 7 Languages</h3>
+            <p style="font-size:12px;color:var(--text-muted);margin-top:4px">Pick from 8 AI voices across 7 languages including English (US/UK/IN), Hindi, Spanish, French, and German.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="sep"></div>
+
+<!-- ═══════════════════ VOICE INTERVIEW ═══════════════════ -->
+<section>
+  <div class="container">
+    <div class="section-label">Live Session</div>
+    <h2 class="section-title" style="margin-bottom:8px">Real-time. Voice-first. Autonomous.</h2>
+    <p style="color:var(--text-muted);font-size:15px;margin-bottom:40px;max-width:560px">Bidirectional audio streaming via WebSocket. The AI asks questions, listens to answers, and follows up adaptively &mdash; all in real time.</p>
+
+    <!-- Terminal mockup -->
+    <div class="terminal" style="max-width:680px;margin:0 auto 32px">
+      <div class="terminal-bar">
+        <span class="terminal-dot" style="background:rgba(239,68,68,.7)"></span>
+        <span class="terminal-dot" style="background:rgba(234,179,8,.7)"></span>
+        <span class="terminal-dot" style="background:rgba(74,222,128,.7)"></span>
+        <span class="terminal-title">Live Interview Session</span>
+        <span style="margin-left:auto;display:flex;align-items:center;gap:6px">
+          <span style="width:8px;height:8px;border-radius:50%;background:var(--red);animation:pulse-dot 2s infinite"></span>
+          <span class="mono" style="font-size:10px;color:var(--red)">REC</span>
+        </span>
+      </div>
+      <div class="terminal-body">
+        <div style="display:flex;gap:14px;margin-bottom:18px">
+          <div style="width:3px;border-radius:2px;background:var(--primary);flex-shrink:0"></div>
+          <div>
+            <div class="mono" style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--primary)">Interviewer</div>
+            <div style="color:#d4d3ce;margin-top:4px;font-family:'Inter',sans-serif;font-size:13px">Tell me about a time you had to debug a critical production outage.</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:14px;margin-bottom:18px">
+          <div style="width:3px;border-radius:2px;background:rgba(255,255,255,.15);flex-shrink:0"></div>
+          <div>
+            <div class="mono" style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--text-dim)">Candidate</div>
+            <div style="color:#d4d3ce;margin-top:4px;font-family:'Inter',sans-serif;font-size:13px">We had a memory leak in our Redis cluster causing cascading timeouts. I started by checking the metrics dashboard...</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:14px">
+          <div style="width:3px;border-radius:2px;background:var(--primary);flex-shrink:0"></div>
+          <div>
+            <div class="mono" style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--primary)">Interviewer</div>
+            <div style="color:#d4d3ce;margin-top:4px;font-family:'Inter',sans-serif;font-size:13px">How did you isolate that it was specifically Redis and not the application layer?</div>
+          </div>
+        </div>
+      </div>
+      <div style="padding:0 24px 18px">
+        <div style="height:28px;border-radius:8px;background:rgba(20,20,19,.6);border:1px solid rgba(250,249,245,.04);display:flex;align-items:center;justify-content:center;gap:3px;padding:0 16px">
+          <svg viewBox="0 0 200 24" style="width:100%;height:100%" preserveAspectRatio="none">
+            <path d="M0,12 Q10,4 20,12 T40,12 T60,12 Q70,2 80,12 T100,12 T120,12 Q130,6 140,12 T160,12 T180,12 Q190,8 200,12" fill="none" stroke="url(#wg)" stroke-width="1.5" stroke-linecap="round"/>
+            <defs><linearGradient id="wg" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#cc785c" stop-opacity=".5"/><stop offset="50%" stop-color="#d97757" stop-opacity=".8"/><stop offset="100%" stop-color="#cc785c" stop-opacity=".5"/></linearGradient></defs>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:8px">
+      <span class="badge">Voice-First</span>
+      <span class="badge">8 AI Voices</span>
+      <span class="badge">7 Languages</span>
+      <span class="badge">Live Code Editor</span>
+      <span class="badge">Stage-Aware Follow-ups</span>
+      <span class="badge">Real-time Transcription</span>
+    </div>
+    <p class="mono" style="text-align:center;font-size:11px;color:var(--text-dim);margin-top:16px">
+      Powered by Gemini 3.1 Flash Live &mdash; bidirectional audio over WebSocket
+    </p>
+  </div>
+</section>
+
+<div class="sep"></div>
+
+<!-- ═══════════════════ SMART CODE EDITOR ═══════════════════ -->
+<section>
+  <div class="container">
+    <div class="section-label">Code Editor</div>
+    <h2 class="section-title" style="margin-bottom:8px">Monaco, synced with the AI.</h2>
+    <p style="color:var(--text-muted);font-size:15px;margin-bottom:40px;max-width:560px">During live coding rounds, a full Monaco editor appears. Code context is debounced and injected into the AI's awareness &mdash; it can see what you write without interrupting.</p>
+
+    <div class="three-col" style="max-width:700px">
+      <div class="glass scan" style="padding:20px">
+        <h3 style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px">&#x1F4BB; Live Sync</h3>
+        <p style="font-size:12px;color:var(--text-muted)">Code changes are debounced and silently injected into the AI context. The interviewer sees your code without you saying a word.</p>
+      </div>
+      <div class="glass scan" style="padding:20px">
+        <h3 style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px">&#x1F4CB; Paste Detection</h3>
+        <p style="font-size:12px;color:var(--text-muted)">Pastes of 40+ characters are flagged as high-severity integrity events. The AI may casually check in after a paste.</p>
+      </div>
+      <div class="glass scan" style="padding:20px">
+        <h3 style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px">&#x1F310; Language Picker</h3>
+        <p style="font-size:12px;color:var(--text-muted)">Supports multiple languages with syntax highlighting. The language context is passed to the AI along with the code.</p>
+      </div>
+      <div class="glass scan" style="padding:20px">
+        <h3 style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px">&#x1F6E1; Integrity Tracking</h3>
+        <p style="font-size:12px;color:var(--text-muted)">Every paste event is logged with a timestamp, character count, and severity level in the proctoring timeline.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="sep"></div>
+
+<!-- ═══════════════════ ML PROCTORING ═══════════════════ -->
+<section>
+  <div class="container">
+    <div class="section-label">Integrity Monitor</div>
+    <h2 class="section-title" style="margin-bottom:8px">Three layers of cheat detection.</h2>
+    <p style="color:var(--text-muted);font-size:15px;margin-bottom:40px;max-width:600px">On-device ML. Browser signals. AI vision. Working together to maintain interview integrity without compromising candidate experience.</p>
+
+    <div class="two-col" style="gap:20px">
+      <!-- Layers -->
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div class="glass layer-card" style="--layer-color:var(--green)">
+          <div class="layer-num">Layer 1</div>
+          <div class="layer-title">Behavioral Signals</div>
+          <ul class="layer-items">
+            <li>Fullscreen exit</li>
+            <li>Tab switch / minimize</li>
+            <li>Window blur</li>
+            <li>Paste detection (40+ chars)</li>
+            <li>Multi-monitor detection</li>
+          </ul>
+          <div class="layer-detail">Browser-event-based, instant detection</div>
+        </div>
+        <div class="glass layer-card" style="--layer-color:var(--blue)">
+          <div class="layer-num">Layer 2</div>
+          <div class="layer-title">On-Device ML</div>
+          <ul class="layer-items">
+            <li>No face detected</li>
+            <li>Multiple faces detected</li>
+            <li>Head pose tracking (yaw &gt; 28&deg;, pitch thresholds)</li>
+          </ul>
+          <div class="layer-detail">MediaPipe FaceLandmarker &middot; GPU-accelerated WASM &middot; ~4fps &middot; 2.5s debounce</div>
+        </div>
+        <div class="glass layer-card" style="--layer-color:var(--purple)">
+          <div class="layer-num">Layer 3</div>
+          <div class="layer-title">AI Vision Confirmation</div>
+          <ul class="layer-items">
+            <li>JPEG frame sent to Gemini 2.5 Flash</li>
+            <li>Conservative confirmation only</li>
+            <li>Rate-limited with 120s backoff on 429</li>
+          </ul>
+          <div class="layer-detail">Triggered by soft ML flags (no-face, looking-away)</div>
+        </div>
+      </div>
+
+      <!-- Event types -->
+      <div class="glass" style="padding:24px">
+        <div class="mono" style="font-size:10px;text-transform:uppercase;letter-spacing:.2em;color:var(--text-dim);margin-bottom:16px">8 Event Types Tracked</div>
+        <div class="event-grid">
+          <div class="event-card scan"><span class="event-icon">&#x1F5A5;</span><div class="event-info"><div class="event-label">Exited fullscreen</div><div><span class="sev-dot" style="background:var(--red)"></span><span class="sev-text" style="color:var(--red)">High</span></div></div><span class="penalty">-15pts</span></div>
+          <div class="event-card scan"><span class="event-icon">&#x1F500;</span><div class="event-info"><div class="event-label">Switched tab</div><div><span class="sev-dot" style="background:var(--red)"></span><span class="sev-text" style="color:var(--red)">High</span></div></div><span class="penalty">-15pts</span></div>
+          <div class="event-card scan"><span class="event-icon">&#x2197;</span><div class="event-info"><div class="event-label">Window blur</div><div><span class="sev-dot" style="background:var(--yellow)"></span><span class="sev-text" style="color:var(--yellow)">Medium</span></div></div><span class="penalty">-8pts</span></div>
+          <div class="event-card scan"><span class="event-icon">&#x1F4CB;</span><div class="event-info"><div class="event-label">Pasted code</div><div><span class="sev-dot" style="background:var(--red)"></span><span class="sev-text" style="color:var(--red)">High</span></div></div><span class="penalty">-15pts</span></div>
+          <div class="event-card scan"><span class="event-icon">&#x1F5A5;</span><div class="event-info"><div class="event-label">Multi-monitor</div><div><span class="sev-dot" style="background:var(--green)"></span><span class="sev-text" style="color:var(--green)">Low</span></div></div><span class="penalty">-3pts</span></div>
+          <div class="event-card scan"><span class="event-icon">&#x1F6AB;</span><div class="event-info"><div class="event-label">No face detected</div><div><span class="sev-dot" style="background:var(--yellow)"></span><span class="sev-text" style="color:var(--yellow)">Medium</span></div></div><span class="penalty">-8pts</span></div>
+          <div class="event-card scan"><span class="event-icon">&#x1F465;</span><div class="event-info"><div class="event-label">Multiple faces</div><div><span class="sev-dot" style="background:var(--red)"></span><span class="sev-text" style="color:var(--red)">High</span></div></div><span class="penalty">-15pts</span></div>
+          <div class="event-card scan"><span class="event-icon">&#x1F440;</span><div class="event-info"><div class="event-label">Looking away</div><div><span class="sev-dot" style="background:var(--yellow)"></span><span class="sev-text" style="color:var(--yellow)">Medium</span></div></div><span class="penalty">-8pts</span></div>
+        </div>
+
+        <div style="margin-top:20px;padding:14px 18px;border-radius:12px;background:rgba(204,120,92,.05);border:1px solid rgba(204,120,92,.15);display:flex;align-items:start;gap:12px">
+          <span style="font-size:18px;flex-shrink:0">&#x1F6E1;</span>
+          <p style="font-size:12px;color:#d4d3ce;line-height:1.6"><strong style="color:var(--text)">Conversational integrity.</strong> When soft flags are raised, the AI interviewer casually checks in &mdash; "Everything okay?" &mdash; without ever accusing the candidate of cheating.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="sep"></div>
+
+<!-- ═══════════════════ SELF-VIEW PIP ═══════════════════ -->
+<section>
+  <div class="container">
+    <div class="section-label">Self-View</div>
+    <h2 class="section-title" style="margin-bottom:8px">Camera PiP with live face status.</h2>
+    <p style="color:var(--text-muted);font-size:15px;margin-bottom:32px;max-width:560px">A small picture-in-picture camera preview shows the candidate their own video feed with a real-time face detection status indicator.</p>
+
+    <div class="three-col" style="max-width:600px">
+      <div class="glass scan" style="padding:20px">
+        <h3 style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px">&#x1F7E2; Face Detected</h3>
+        <p style="font-size:12px;color:var(--text-muted)">Green indicator when the ML model confirms a single face is visible and facing the screen.</p>
+      </div>
+      <div class="glass scan" style="padding:20px">
+        <h3 style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px">&#x1F534; Status Alerts</h3>
+        <p style="font-size:12px;color:var(--text-muted)">Turns red for no-face, multiple-faces, or looking-away &mdash; candidates can self-correct before flags fire.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="sep"></div>
+
+<!-- ═══════════════════ SCORING & EVALUATION ═══════════════════ -->
+<section>
+  <div class="container">
+    <div class="section-label">Evaluation</div>
+    <h2 class="section-title" style="margin-bottom:8px">AI-powered, stage-by-stage scoring.</h2>
+    <p style="color:var(--text-muted);font-size:15px;margin-bottom:40px;max-width:560px">After the interview ends, Gemini evaluates the full transcript against every planned stage. Calibrated, grounded, and honest.</p>
+
+    <div class="two-col" style="gap:20px">
+      <!-- Score ring + bars -->
+      <div class="glass" style="padding:32px;display:flex;flex-direction:column;align-items:center">
+        <div class="score-ring">
+          <svg viewBox="0 0 120 120"><circle class="track" cx="60" cy="60" r="52"/><circle class="fill" cx="60" cy="60" r="52"/></svg>
+          <div class="score-num"><strong>78</strong><span>Overall</span></div>
+        </div>
+
+        <div style="width:100%;display:flex;flex-direction:column;gap:12px">
+          <div>
+            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><span style="color:var(--text-muted)">Technical Screening</span><span style="color:var(--green);font-weight:600">82</span></div>
+            <div style="height:6px;background:var(--bg);border-radius:4px;overflow:hidden"><div style="width:82%;height:100%;border-radius:4px;background:var(--green)"></div></div>
+          </div>
+          <div>
+            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><span style="color:var(--text-muted)">System Design</span><span style="color:var(--blue);font-weight:600">71</span></div>
+            <div style="height:6px;background:var(--bg);border-radius:4px;overflow:hidden"><div style="width:71%;height:100%;border-radius:4px;background:var(--blue)"></div></div>
+          </div>
+          <div>
+            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><span style="color:var(--text-muted)">Behavioral</span><span style="color:var(--green);font-weight:600">85</span></div>
+            <div style="height:6px;background:var(--bg);border-radius:4px;overflow:hidden"><div style="width:85%;height:100%;border-radius:4px;background:var(--green)"></div></div>
+          </div>
+        </div>
+        <p class="mono" style="font-size:10px;color:var(--text-dim);margin-top:16px;text-align:center">Calibrated: average candidate scores ~60</p>
+      </div>
+
+      <!-- Tiers + integrity -->
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div class="glass" style="padding:24px">
+          <div class="mono" style="font-size:10px;text-transform:uppercase;letter-spacing:.2em;color:var(--text-dim);margin-bottom:14px">5 Recommendation Tiers</div>
+          <div class="tier" style="background:rgba(74,222,128,.07)"><span class="tier-dot" style="background:var(--green);box-shadow:0 0 8px rgba(74,222,128,.4)"></span><span class="tier-label" style="color:var(--green)">Strong Hire</span></div>
+          <div class="tier" style="background:rgba(96,165,250,.07)"><span class="tier-dot" style="background:var(--blue);box-shadow:0 0 8px rgba(96,165,250,.4)"></span><span class="tier-label" style="color:var(--blue)">Hire</span><span class="mono" style="margin-left:auto;font-size:10px;padding:3px 10px;border-radius:999px;border:1px solid rgba(96,165,250,.3);color:var(--blue);background:rgba(96,165,250,.1)">MATCH</span></div>
+          <div class="tier" style="background:rgba(250,204,21,.05)"><span class="tier-dot" style="background:var(--yellow)"></span><span class="tier-label" style="color:var(--yellow)">Lean Hire</span></div>
+          <div class="tier" style="opacity:.35"><span class="tier-dot" style="background:rgba(255,255,255,.1)"></span><span class="tier-label" style="color:rgba(255,255,255,.25)">No Hire</span></div>
+          <div class="tier" style="opacity:.35"><span class="tier-dot" style="background:rgba(255,255,255,.1)"></span><span class="tier-label" style="color:rgba(255,255,255,.25)">Strong No Hire</span></div>
+        </div>
+
+        <div class="glass" style="padding:24px">
+          <div class="mono" style="font-size:10px;text-transform:uppercase;letter-spacing:.2em;color:var(--text-dim);margin-bottom:14px">Integrity Score Formula</div>
+          <div class="formula"><span style="color:var(--primary)">integrity</span> = 100 - <span style="color:var(--text-dim)">SUM</span>(penalties)</div>
+          <div style="display:flex;gap:16px;margin-top:14px">
+            <div style="display:flex;align-items:center;gap:6px"><span class="sev-dot" style="background:var(--green)"></span><span style="font-size:12px;color:var(--text-muted)">Low</span><span class="mono" style="font-size:11px;color:var(--text-dim)">-3pts</span></div>
+            <div style="display:flex;align-items:center;gap:6px"><span class="sev-dot" style="background:var(--yellow)"></span><span style="font-size:12px;color:var(--text-muted)">Med</span><span class="mono" style="font-size:11px;color:var(--text-dim)">-8pts</span></div>
+            <div style="display:flex;align-items:center;gap:6px"><span class="sev-dot" style="background:var(--red)"></span><span style="font-size:12px;color:var(--text-muted)">High</span><span class="mono" style="font-size:11px;color:var(--text-dim)">-15pts</span></div>
+          </div>
+          <p style="font-size:11px;color:var(--text-dim);margin-top:14px;line-height:1.5">Integrity is scored separately from competency. AI-confirmed events are excluded from double-counting.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="sep"></div>
+
+<!-- ═══════════════════ TECH STACK ═══════════════════ -->
+<section>
+  <div class="container">
+    <div class="section-label">Tech Stack</div>
+    <h2 class="section-title" style="margin-bottom:32px">Built with</h2>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;max-width:800px">
+      <div class="glass scan" style="padding:16px;display:flex;align-items:center;gap:12px"><span style="font-size:20px">&#x269B;</span><div><div style="font-size:13px;font-weight:600;color:var(--text)">React 19</div><div style="font-size:11px;color:var(--text-dim)">UI framework</div></div></div>
+      <div class="glass scan" style="padding:16px;display:flex;align-items:center;gap:12px"><span style="font-size:20px">&#x1F4AC;</span><div><div style="font-size:13px;font-weight:600;color:var(--text)">Gemini Live</div><div style="font-size:11px;color:var(--text-dim)">Voice AI via WebSocket</div></div></div>
+      <div class="glass scan" style="padding:16px;display:flex;align-items:center;gap:12px"><span style="font-size:20px">&#x1F9E0;</span><div><div style="font-size:13px;font-weight:600;color:var(--text)">MediaPipe</div><div style="font-size:11px;color:var(--text-dim)">On-device face ML</div></div></div>
+      <div class="glass scan" style="padding:16px;display:flex;align-items:center;gap:12px"><span style="font-size:20px">&#x1F4DD;</span><div><div style="font-size:13px;font-weight:600;color:var(--text)">Monaco Editor</div><div style="font-size:11px;color:var(--text-dim)">VS Code engine</div></div></div>
+      <div class="glass scan" style="padding:16px;display:flex;align-items:center;gap:12px"><span style="font-size:20px">&#x1F504;</span><div><div style="font-size:13px;font-weight:600;color:var(--text)">React Flow</div><div style="font-size:11px;color:var(--text-dim)">Visual flow builder</div></div></div>
+      <div class="glass scan" style="padding:16px;display:flex;align-items:center;gap:12px"><span style="font-size:20px">&#x1F3A8;</span><div><div style="font-size:13px;font-weight:600;color:var(--text)">Tailwind CSS 4</div><div style="font-size:11px;color:var(--text-dim)">Styling</div></div></div>
+      <div class="glass scan" style="padding:16px;display:flex;align-items:center;gap:12px"><span style="font-size:20px">&#x1F4E6;</span><div><div style="font-size:13px;font-weight:600;color:var(--text)">Zustand</div><div style="font-size:11px;color:var(--text-dim)">State management</div></div></div>
+      <div class="glass scan" style="padding:16px;display:flex;align-items:center;gap:12px"><span style="font-size:20px">&#x26A1;</span><div><div style="font-size:13px;font-weight:600;color:var(--text)">Vite 8</div><div style="font-size:11px;color:var(--text-dim)">Build tooling</div></div></div>
+    </div>
+  </div>
+</section>
+
+<div class="sep"></div>
+
+<!-- ═══════════════════ FOOTER CTA ═══════════════════ -->
+<section style="padding-bottom:40px">
+  <div class="container">
+    <div class="cta-card" style="max-width:700px;margin:0 auto">
+      <div class="cta-inner">
+        <h2 class="serif" style="font-size:clamp(24px,4vw,36px);font-weight:300;color:var(--text);margin-bottom:12px">Ready to run your first AI interview?</h2>
+        <p style="color:var(--text-muted);margin-bottom:28px;max-width:420px;margin-left:auto;margin-right:auto;font-size:15px">Design a flow, launch a session, and get a full evaluation report &mdash; in under 10 minutes.</p>
+        <a href="https://interviewer-ai-9uls.vercel.app/" target="_blank" rel="noopener"
+           style="display:inline-flex;align-items:center;gap:8px;padding:14px 32px;border-radius:999px;background:var(--primary);color:#fff;font-weight:500;font-size:14px;box-shadow:0 4px 24px rgba(204,120,92,.35);transition:all .2s">
+          Try Live Demo &rarr;
+        </a>
+      </div>
+    </div>
+
+    <div class="tech-row">
+      <span class="tech-badge">Gemini Live</span>
+      <span style="color:var(--text-dim);opacity:.3">&middot;</span>
+      <span class="tech-badge">MediaPipe</span>
+      <span style="color:var(--text-dim);opacity:.3">&middot;</span>
+      <span class="tech-badge">Monaco Editor</span>
+      <span style="color:var(--text-dim);opacity:.3">&middot;</span>
+      <span class="tech-badge">React Flow</span>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="container">
+    <p>InterviewAI &middot; Built with Gemini &middot; <a href="https://interviewer-ai-9uls.vercel.app/" target="_blank">interviewer-ai-9uls.vercel.app</a></p>
+  </div>
+</footer>
+
+</body>
+</html>
