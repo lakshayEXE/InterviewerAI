@@ -98,7 +98,16 @@ export const FlowBuilder: React.FC = () => {
     const meta = NODE_CATEGORIES.find(c => c.category === category);
     if (!meta) return;
 
-    const pos = position ?? { x: 250, y: 80 + nodes.length * 130 };
+    // The "visual tail" of the chain = node with the greatest y coordinate.
+    // Using this (instead of array order) keeps the new node and edge anchored
+    // to wherever the user has actually placed the bottom of their flow.
+    const tailNode = nodes.length > 0
+      ? nodes.reduce((a, b) => (a.position.y >= b.position.y ? a : b))
+      : null;
+
+    const pos = position ?? (tailNode
+      ? { x: tailNode.position.x, y: tailNode.position.y + 140 }
+      : { x: 250, y: 80 });
 
     const newNode: Node = {
       id: `node_${Date.now()}`,
@@ -109,12 +118,10 @@ export const FlowBuilder: React.FC = () => {
 
     setNodes(nds => [...nds, newNode]);
 
-    // Auto-connect to the last node
-    if (nodes.length > 0) {
-      const lastNode = nodes[nodes.length - 1];
+    if (tailNode) {
       setEdges(eds => [...eds, {
-        id: `e_${lastNode.id}-${newNode.id}`,
-        source: lastNode.id,
+        id: `e_${tailNode.id}-${newNode.id}`,
+        source: tailNode.id,
         target: newNode.id,
         animated: true,
         style: { stroke: '#38bdf8' },

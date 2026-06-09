@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
-import { PhoneCall, LogOut, Loader2, User, Code2, AlertTriangle, Maximize } from 'lucide-react';
+import { PhoneCall, LogOut, Loader2, User, Code2, AlertTriangle, Maximize, Circle, Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { TranscriptSidebar } from '../components/TranscriptSidebar';
 import { Visualizer } from '../components/Visualizer';
@@ -9,7 +9,7 @@ import { AudioRecorder } from '../services/AudioRecorder';
 import { AudioPlayer } from '../services/AudioPlayer';
 import { GeminiLiveService } from '../services/GeminiLiveService';
 import { FaceProctor } from '../services/FaceProctor';
-import { confirmFrame } from '../services/ProctorVisionService';
+import { confirmFrame, isVisionBackedOff } from '../services/ProctorVisionService';
 import { useInterviewStore } from '../store/useInterviewStore';
 import { buildSystemPrompt } from '../utils/promptBuilder';
 import { decodeSessionPayload } from '../utils/sessionPayload';
@@ -20,6 +20,15 @@ import { PROCTOR_EVENT_META } from '../types/proctor';
 const NUDGE_PHRASE: Partial<Record<ProctorEventType, string>> = {
   'looking-away': 'the candidate appeared to look away from the screen for several seconds',
   'no-face': 'the candidate may have stepped away from the camera',
+};
+
+const formatElapsed = (ms: number): string => {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
 };
 import { PageTransition } from '../components/ui/PageTransition';
 import { Card } from '../components/ui/Card';
@@ -45,11 +54,13 @@ export const Interviewer: React.FC = () => {
   const setSessionNodes = useInterviewStore(state => state.setSessionNodes);
   const addProctorEvent = useInterviewStore(state => state.addProctorEvent);
   const clearProctorEvents = useInterviewStore(state => state.clearProctorEvents);
+  const proctorEvents = useInterviewStore(state => state.proctorEvents);
 
   const [isConnected, setIsConnected] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [micVolume, setMicVolume] = useState(0);
   const [aiVolume, setAiVolume] = useState(0);
+  const [elapsedMs, setElapsedMs] = useState(0);
 
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showCodeEditor, setShowCodeEditor] = useState(false);
@@ -58,6 +69,7 @@ export const Interviewer: React.FC = () => {
   const audioRecorderRef = useRef<AudioRecorder | null>(null);
   const audioPlayerRef = useRef<AudioPlayer | null>(null);
   const geminiServiceRef = useRef<GeminiLiveService | null>(null);
+  const sessionStartRef = useRef<number | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
   const faceProctorRef = useRef<FaceProctor | null>(null);
@@ -120,10 +132,13 @@ export const Interviewer: React.FC = () => {
       }
     }
 
-    // Cost-controlled Gemini snapshot confirmation for ML-flagged events
+    // Cost-controlled Gemini snapshot confirmation for ML-flagged events.
+    // Vision is "nice to have" — the ML event itself is already stored in the
+    // integrity report. Keep the cadence loose to stay well under free-tier quota.
     if (source === 'ml' && (meta.severity === 'medium' || meta.severity === 'high')) {
       const now = Date.now();
-      if (now - lastEscalationRef.current > 25000) {
+      const VISION_INTERVAL_MS = 90_000;
+      if (now - lastEscalationRef.current > VISION_INTERVAL_MS && !isVisionBackedOff()) {
         lastEscalationRef.current = now;
         const key = useInterviewStore.getState().apiKey;
         const jpeg = captureFrame();
@@ -287,6 +302,19 @@ export const Interviewer: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
+  // Elapsed-time ticker: runs only while the session is live
+  useEffect(() => {
+    if (!isRecording) return;
+    const tick = () => {
+      if (sessionStartRef.current) {
+        setElapsedMs(Date.now() - sessionStartRef.current);
+      }
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [isRecording]);
+
   // Removed auto-start useEffect to respect browser AudioContext user gesture policies.
   // The user must explicitly click the Call button to begin.
 
@@ -311,6 +339,8 @@ export const Interviewer: React.FC = () => {
       await audioRecorderRef.current.start();
       setIsRecording(true);
       setSessionActive(true);
+      sessionStartRef.current = Date.now();
+      setElapsedMs(0);
 
       const systemPrompt = buildSystemPrompt(activeNodes, candidateName, session.companyInfo, session.config);
       clearTranscript();
@@ -364,36 +394,176 @@ export const Interviewer: React.FC = () => {
     if (length >= 40) reportProctorEvent('paste', 'behavioral');
   }, [reportProctorEvent]);
 
+  // Conversational state machine
+  type SpeakerState = 'speaking' | 'listening' | 'your-turn' | 'thinking';
+  const VOL_THRESHOLD = 5;
+  const speakerState: SpeakerState = (() => {
+    if (aiVolume > VOL_THRESHOLD && aiVolume >= micVolume) return 'speaking';
+    if (micVolume > VOL_THRESHOLD) return 'listening';
+    const last = transcript[transcript.length - 1];
+    if (!last) return 'thinking';
+    return last.sender === 'ai' ? 'your-turn' : 'thinking';
+  })();
+  const speakerMeta: Record<SpeakerState, { label: string; dot: string; ring: string; text: string }> = {
+    speaking:  { label: 'AI speaking',  dot: 'bg-primary',   ring: 'bg-primary',   text: 'text-textMain' },
+    listening: { label: 'Listening',    dot: 'bg-sky-400',   ring: 'bg-sky-400',   text: 'text-textMain' },
+    'your-turn': { label: 'Your turn',  dot: 'bg-emerald-400', ring: 'bg-emerald-400', text: 'text-textMain' },
+    thinking:  { label: 'Thinking…',    dot: 'bg-amber-400', ring: 'bg-amber-400', text: 'text-textMuted' },
+  };
+  const speaker = speakerMeta[speakerState];
+
+  // Face health: warn if a recent ML event (no-face/looking-away) was raised
+  type FaceHealth = 'ok' | 'warn';
+  const [faceHealth, setFaceHealth] = useState<FaceHealth>('ok');
+  useEffect(() => {
+    const compute = () => {
+      const now = Date.now();
+      const warn = proctorEvents.some(
+        e => e.source === 'ml'
+          && (e.type === 'no-face' || e.type === 'looking-away')
+          && now - e.timestamp < 6000
+      );
+      setFaceHealth(warn ? 'warn' : 'ok');
+    };
+    compute();
+    const id = setInterval(compute, 1000);
+    return () => clearInterval(id);
+  }, [proctorEvents]);
+
   return (
     <PageTransition className="flex w-full h-full">
       <div className="flex-1 flex flex-col pt-20 px-6 pb-6 gap-6 relative">
-        <Card className="!p-4 flex justify-between items-center z-10 shrink-0">
-          <div className="flex items-center gap-4">
-            <div className="relative flex h-3 w-3">
-              {isConnected && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>}
-              <span className={`relative inline-flex rounded-full h-3 w-3 ${isConnected ? 'bg-primary' : 'bg-red-500'}`}></span>
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-white">
-                Live Session
-              </h1>
-              <div className="text-xs text-textMuted font-medium flex items-center gap-2 mt-1">
-                <User size={12} /> {candidateName}
-                <span className="text-white/20">|</span>
-                <span>{activeNodes.length} Stages</span>
+        {/* Ambient slow-drifting gradient backdrop */}
+        <div className="absolute inset-0 -z-10 overflow-hidden pointer-events-none">
+          <motion.div
+            aria-hidden
+            className="absolute -top-32 -left-32 w-[520px] h-[520px] rounded-full"
+            style={{
+              background: 'radial-gradient(circle at center, rgba(56, 189, 248, 0.18), rgba(56, 189, 248, 0) 65%)',
+              filter: 'blur(40px)',
+            }}
+            animate={{ x: [0, 80, -40, 0], y: [0, 60, 30, 0] }}
+            transition={{ duration: 38, repeat: Infinity, ease: 'easeInOut' }}
+          />
+          <motion.div
+            aria-hidden
+            className="absolute -bottom-40 -right-32 w-[560px] h-[560px] rounded-full"
+            style={{
+              background: 'radial-gradient(circle at center, rgba(167, 139, 250, 0.16), rgba(167, 139, 250, 0) 65%)',
+              filter: 'blur(50px)',
+            }}
+            animate={{ x: [0, -70, 30, 0], y: [0, -50, -20, 0] }}
+            transition={{ duration: 46, repeat: Infinity, ease: 'easeInOut' }}
+          />
+          <motion.div
+            aria-hidden
+            className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[420px] h-[420px] rounded-full"
+            style={{
+              background: 'radial-gradient(circle at center, rgba(74, 222, 128, 0.10), rgba(74, 222, 128, 0) 65%)',
+              filter: 'blur(60px)',
+            }}
+            animate={{ x: [-30, 30, -10, -30], y: [-20, 20, 0, -20] }}
+            transition={{ duration: 52, repeat: Infinity, ease: 'easeInOut' }}
+          />
+        </div>
+
+        <Card className="!p-4 z-10 shrink-0 relative">
+          <div className="flex items-center justify-between gap-4">
+            {/* LEFT: status + identity */}
+            <div className="flex items-center gap-3 min-w-0">
+              <div
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-[0.14em] border shrink-0 ${
+                  isConnected
+                    ? 'bg-primary/10 text-primary border-primary/25'
+                    : isRecording
+                    ? 'bg-amber-400/10 text-amber-400 border-amber-400/25'
+                    : 'bg-red-500/10 text-red-400 border-red-500/25'
+                }`}
+              >
+                <span className="relative flex h-1.5 w-1.5">
+                  <span
+                    className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                      isConnected ? 'bg-primary' : isRecording ? 'bg-amber-400' : 'bg-red-500'
+                    }`}
+                  />
+                  <span
+                    className={`relative inline-flex rounded-full h-1.5 w-1.5 ${
+                      isConnected ? 'bg-primary' : isRecording ? 'bg-amber-400' : 'bg-red-500'
+                    }`}
+                  />
+                </span>
+                {isConnected ? 'Live' : isRecording ? 'Connecting' : 'Offline'}
+              </div>
+
+              <div className="shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-primary/25 to-accent/25 border border-white/10 flex items-center justify-center text-sm font-bold text-white shadow-inner">
+                {(candidateName || 'C').charAt(0).toUpperCase()}
+              </div>
+
+              <div className="min-w-0">
+                <div className="text-base font-bold text-white truncate leading-tight">
+                  {candidateName || 'Candidate'}
+                </div>
+                <div className="text-[11px] text-textMuted font-medium flex items-center gap-1.5 mt-0.5">
+                  <User size={11} />
+                  <span>{activeNodes.length}-stage interview</span>
+                  {session.companyInfo?.name && (
+                    <>
+                      <span className="text-white/15">•</span>
+                      <span className="truncate">{session.companyInfo.name}</span>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
+
+            {/* CENTER: elapsed timer (only while live) */}
+            <div className="hidden md:flex flex-col items-center px-5 border-l border-r border-white/[0.06] self-stretch justify-center min-w-[110px]">
+              <span className="text-[9px] text-textMuted uppercase tracking-[0.22em] font-semibold">
+                {isRecording ? 'Elapsed' : 'Ready'}
+              </span>
+              <span
+                className={`text-2xl font-mono font-semibold tabular-nums tracking-tight leading-tight ${
+                  isRecording ? 'text-white' : 'text-textMuted/60'
+                }`}
+              >
+                {isRecording ? formatElapsed(elapsedMs) : '00:00'}
+              </span>
+            </div>
+
+            {/* RIGHT: actions */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowCodeEditor(!showCodeEditor)}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-textMain hover:text-white bg-surface/60 hover:bg-surfaceHighlight border border-white/[0.06] hover:border-white/15 transition-all"
+              >
+                <Code2 size={15} />
+                <span className="hidden sm:inline">{showCodeEditor ? 'Hide IDE' : 'Show IDE'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={endCall}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-red-400/80 hover:text-red-300 hover:bg-red-500/10 border border-transparent hover:border-red-500/25 transition-all"
+              >
+                <LogOut size={15} />
+                <span className="hidden sm:inline">End session</span>
+              </button>
+            </div>
           </div>
-          <div className="flex gap-3">
-            <Button variant="secondary" size="sm" onClick={() => setShowCodeEditor(!showCodeEditor)}>
-              <Code2 size={16} />
-              <span className="hidden sm:inline">{showCodeEditor ? 'Hide IDE' : 'Show IDE'}</span>
-            </Button>
-            <Button variant="danger" size="sm" onClick={endCall}>
-              <LogOut size={16} />
-              <span className="hidden sm:inline">End Session</span>
-            </Button>
-          </div>
+
+          {/* Subtle elapsed-time progress strip (assumes ~5 min per stage as a soft target) */}
+          {isRecording && (
+            <div className="absolute -bottom-4 -left-4 -right-4 h-[2px] bg-white/[0.04]">
+              <motion.div
+                className="h-full bg-gradient-to-r from-primary via-accent to-sky-400"
+                initial={{ width: 0 }}
+                animate={{
+                  width: `${Math.min(100, (elapsedMs / Math.max(1, activeNodes.length * 5 * 60 * 1000)) * 100)}%`,
+                }}
+                transition={{ duration: 0.6, ease: 'easeOut' }}
+              />
+            </div>
+          )}
         </Card>
 
         {alerts.length > 0 && (
@@ -446,19 +616,46 @@ export const Interviewer: React.FC = () => {
             }
             transition={{ type: "spring", bounce: 0.1, duration: 0.6 }}
           >
+            {/* Audio-reactive aura: softly breathes with the AI's voice */}
+            {!showCodeEditor && (
+              <div
+                className="pointer-events-none absolute inset-0 flex items-center justify-center transition-opacity duration-200"
+                style={{ opacity: 0.35 + Math.min(0.55, aiVolume * 0.012) }}
+              >
+                <div
+                  className="rounded-full transition-[width,height,filter] duration-200"
+                  style={{
+                    width: `${340 + Math.min(140, aiVolume * 2.4)}px`,
+                    height: `${340 + Math.min(140, aiVolume * 2.4)}px`,
+                    background: 'radial-gradient(circle at center, rgba(56, 189, 248, 0.35), rgba(56, 189, 248, 0) 70%)',
+                    filter: `blur(${36 + Math.min(28, aiVolume * 0.5)}px)`,
+                  }}
+                />
+              </div>
+            )}
+
             <Visualizer micVolume={micVolume} aiVolume={aiVolume} />
 
-            {/* Speaking-state label (full-size only) */}
+            {/* Conversational state pill (full-size only) */}
             {!showCodeEditor && isConnected && isRecording && (
-              <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-2.5 px-4 py-2 rounded-full glass-panel">
-                <span className="relative flex h-2 w-2">
-                  <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${aiVolume >= micVolume ? 'bg-primary' : 'bg-sky-400'}`} />
-                  <span className={`relative inline-flex rounded-full h-2 w-2 ${aiVolume >= micVolume ? 'bg-primary' : 'bg-sky-400'}`} />
-                </span>
-                <span className="text-sm font-medium text-textMain">
-                  {aiVolume >= micVolume ? 'AI speaking' : 'Listening'}
-                </span>
-              </div>
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={speakerState}
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  transition={{ duration: 0.2 }}
+                  className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-2.5 px-4 py-2 rounded-full glass-panel"
+                >
+                  <span className="relative flex h-2 w-2">
+                    <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${speaker.ring}`} />
+                    <span className={`relative inline-flex rounded-full h-2 w-2 ${speaker.dot}`} />
+                  </span>
+                  <span className={`text-sm font-medium ${speaker.text}`}>
+                    {speaker.label}
+                  </span>
+                </motion.div>
+              </AnimatePresence>
             )}
 
             {!isConnected && isRecording && (
@@ -472,11 +669,55 @@ export const Interviewer: React.FC = () => {
 
         {/* Self-view PiP (kept mounted so the face detector always has a video element) */}
         <div className={`absolute bottom-6 left-6 z-40 transition-opacity duration-300 ${isRecording ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-          <div className="relative w-44 h-32 rounded-2xl overflow-hidden border border-white/10 shadow-2xl bg-black/60">
-            <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover -scale-x-100" />
-            <span className="absolute top-1.5 left-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded bg-red-500/80 text-white flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" /> REC
-            </span>
+          <div className="relative">
+            {/* Mic-reactive accent ring: scales softly with the candidate's voice */}
+            <div
+              className="absolute -inset-1 rounded-[1.75rem] pointer-events-none transition-[box-shadow,opacity] duration-150"
+              style={{
+                boxShadow: `0 0 ${Math.min(40, micVolume * 0.8)}px ${Math.min(8, micVolume * 0.18)}px rgba(56, 189, 248, ${Math.min(0.55, micVolume * 0.012)})`,
+                opacity: micVolume > 2 ? 1 : 0,
+              }}
+            />
+            <div className="relative w-52 h-36 rounded-3xl overflow-hidden border border-white/10 shadow-[0_10px_40px_rgba(0,0,0,0.55)] bg-black/60">
+              <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover -scale-x-100" />
+
+              {/* REC chip */}
+              <span className="absolute top-2 left-2 inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full bg-black/55 text-white backdrop-blur-md border border-white/10">
+                <Circle size={8} className="fill-red-500 text-red-500 animate-pulse" />
+                REC
+              </span>
+
+              {/* Face-detection health dot */}
+              <span
+                className="absolute top-2 right-2 inline-flex items-center gap-1.5 text-[10px] font-semibold px-2 py-1 rounded-full bg-black/55 backdrop-blur-md border border-white/10"
+                style={{ color: faceHealth === 'ok' ? '#4ade80' : '#fbbf24' }}
+                title={faceHealth === 'ok' ? 'Face detected' : 'Face not visible'}
+              >
+                {faceHealth === 'ok' ? (
+                  <>
+                    <span className="relative flex h-1.5 w-1.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400" />
+                    </span>
+                    <Eye size={10} />
+                  </>
+                ) : (
+                  <>
+                    <span className="relative flex h-1.5 w-1.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-amber-400" />
+                    </span>
+                    <EyeOff size={10} />
+                  </>
+                )}
+              </span>
+
+              {/* Bottom gradient + label */}
+              <div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-black/70 to-transparent pointer-events-none" />
+              <span className="absolute bottom-1.5 left-2 text-[10px] font-medium text-white/80 tracking-wide">
+                You
+              </span>
+            </div>
           </div>
         </div>
 

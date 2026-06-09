@@ -53,3 +53,99 @@ body {
 .clay-glow {
   box-shadow: 0 0 0 1px rgba(204, 120, 92, 0.15), 0 8px 30px rgba(204, 120, 92, 0.08);
 }
+
+.gradient-text {
+  background: linear-gradient(135deg, #cc785c 0%, #d97757 50%, #fb923c 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.mesh-gradient {
+  background:
+    radial-gradient(ellipse at 30% 20%, rgba(204, 120, 92, 0.3) 0%, transparent 50%),
+    radial-gradient(ellipse at 70% 80%, rgba(217, 119, 87, 0.2) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 50%, rgba(96, 165, 250, 0.08) 0%, transparent 60%);
+}
+
+.bento-card {
+  background: rgba(29, 27, 24, 0.4);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(250, 249, 245, 0.06);
+  border-radius: 1rem;
+  transition: all 0.3s ease;
+}
+.bento-card:hover {
+  border-color: rgba(204, 120, 92, 0.2);
+  box-shadow: 0 0 40px rgba(204, 120, 92, 0.06);
+}
+
+.section-spacing {
+  padding-top: 8rem;
+  padding-bottom: 8rem;
+}
+
+@keyframes mesh-rotate {
+  0% { transform: rotate(0deg) scale(1); }
+  50% { transform: rotate(180deg) scale(1.1); }
+  100% { transform: rotate(360deg) scale(1); }
+}
+.animate-mesh {
+  animation: mesh-rotate 20s linear infinite;
+}
+
+/* Typewriter cursor blink */
+@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+.cursor-blink { animation: blink 1s step-end infinite; }
+
+/* Radar sweep */
+@keyframes radar-sweep {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+.radar-sweep { animation: radar-sweep 4s linear infinite; }
+
+/* Card scan hover effect */
+.scan-card { position: relative; overflow: hidden; }
+.scan-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(204,120,92,0.06), transparent);
+  transform: translateX(-100%);
+  transition: transform 0.6s ease;
+  pointer-events: none;
+  border-radius: inherit;
+}
+.scan-card:hover::after { transform: translateX(100%); }
+
+/* Orbit ring animations */
+@keyframes orbit-1 { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+@keyframes orbit-2 { 0% { transform: rotate(0deg); } 100% { transform: rotate(-360deg); } }
+.orbit-1 { animation: orbit-1 8s linear infinite; }
+.orbit-2 { animation: orbit-2 12s linear infinite; }
+.orbit-3 { animation: orbit-1 18s linear infinite; }
+
+/* Timeline glow line */
+@keyframes line-glow {
+  0%, 100% { box-shadow: 0 0 8px rgba(204,120,92,0.3); }
+  50% { box-shadow: 0 0 16px rgba(204,120,92,0.6); }
+}
+.glow-line { animation: line-glow 3s ease-in-out infinite; }
+
+/* Left border pulse */
+@keyframes border-pulse {
+  0%, 100% { border-left-color: var(--pulse-color, rgba(204,120,92,0.3)); }
+  50% { border-left-color: var(--pulse-color-bright, rgba(204,120,92,0.8)); }
+}
+.border-pulse {
+  animation: border-pulse 2s ease-in-out infinite;
+}
+
+/* Floating particle drift */
+@keyframes float-particle {
+  0%, 100% { transform: translate(0, 0); opacity: 0.3; }
+  25% { transform: translate(10px, -15px); opacity: 0.7; }
+  50% { transform: translate(-5px, -25px); opacity: 0.4; }
+  75% { transform: translate(15px, -10px); opacity: 0.8; }
+}

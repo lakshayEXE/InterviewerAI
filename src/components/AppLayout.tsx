@@ -1,9 +1,12 @@
 import React from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { TopNav } from './TopNav';
 
 export const AppLayout: React.FC = () => {
+  const location = useLocation();
+  const isDashboard = location.pathname === '/';
+
   return (
     <div className="h-screen bg-background text-textMain overflow-hidden font-sans relative">
       <Toaster
@@ -16,7 +19,7 @@ export const AppLayout: React.FC = () => {
 
       <TopNav />
 
-      <main className="h-full w-full overflow-hidden">
+      <main className={`h-full w-full ${isDashboard ? 'overflow-y-auto overflow-x-hidden scroll-smooth' : 'overflow-hidden'}`}>
         <Outlet />
       </main>
     </div>

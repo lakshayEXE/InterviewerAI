@@ -11,6 +11,14 @@ export interface ConfirmResult {
   note: string;
 }
 
+// When Gemini returns 429 (Too Many Requests), skip vision calls entirely for
+// this long. Avoids hammering the API while quota is exhausted, since we're
+// already storing the on-device ML event regardless.
+const QUOTA_BACKOFF_MS = 120_000;
+let backoffUntil = 0;
+
+export const isVisionBackedOff = () => Date.now() < backoffUntil;
+
 /**
  * Sends a single JPEG frame to Gemini to confirm a suspicion flagged by the
  * on-device detector. Called rarely (rate-limited by the caller) to keep cost low.
@@ -22,6 +30,10 @@ export async function confirmFrame(
   type: ProctorEventType
 ): Promise<ConfirmResult> {
   if (!apiKey || !jpegBase64) {
+    return { confirmed: false, note: '' };
+  }
+
+  if (isVisionBackedOff()) {
     return { confirmed: false, note: '' };
   }
 
@@ -52,6 +64,14 @@ Return ONLY JSON: { "confirmed": boolean, "note": "<short, factual, one sentence
     );
 
     if (!response.ok) {
+      if (response.status === 429) {
+        backoffUntil = Date.now() + QUOTA_BACKOFF_MS;
+        console.warn(
+          `Proctor vision quota exhausted (429). Pausing confirmations for ${
+            QUOTA_BACKOFF_MS / 1000
+          }s.`
+        );
+      }
       return { confirmed: false, note: '' };
     }
 

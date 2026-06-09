@@ -1,25 +1,14 @@
 import React from 'react';
-import { Hand, BookOpen, Puzzle, Code2, Network, Users, Pencil, Flag, GripVertical, Layers } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
+import { GripVertical, Layers } from 'lucide-react';
 import { NODE_CATEGORIES } from '../../types/flow';
 import type { NodeCategoryMeta, NodeCategory } from '../../types/flow';
+import { CATEGORY_ICONS } from './categoryIcons';
 
 interface NodePaletteProps {
   onGenerateClick: () => void;
   onAddStage: (category: NodeCategory) => void;
   stageCount?: number;
 }
-
-const CATEGORY_ICONS: Record<NodeCategory, LucideIcon> = {
-  greeting: Hand,
-  fundamentals: BookOpen,
-  dsa: Puzzle,
-  coding: Code2,
-  'system-design': Network,
-  behavioral: Users,
-  custom: Pencil,
-  wrapup: Flag,
-};
 
 const PaletteItem: React.FC<{ meta: NodeCategoryMeta; onAdd: () => void }> = ({ meta, onAdd }) => {
   const Icon = CATEGORY_ICONS[meta.category];
